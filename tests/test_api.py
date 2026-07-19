@@ -92,3 +92,20 @@ def test_station_and_timeseries_selection() -> None:
     assert len(series) == 1
     assert series[0].identifier == "24"
     assert series[0].phenomenon == "Abfluss"
+
+
+def test_measurement_requests_are_not_cached() -> None:
+    client = WupperverbandSosClient(None, "https://example.test/sws5/service")
+    response = {
+        "id": "24",
+        "uom": "m³/s",
+        "lastValue": {"timestamp": "2026-07-19T17:39:01Z", "value": 6.57},
+        "feature": {"id": "47"},
+        "parameters": {"phenomenon": {"label": "Abfluss"}},
+    }
+    client._get_json = AsyncMock(side_effect=[response, response])
+
+    asyncio.run(client.async_get_timeseries_observation("24"))
+    asyncio.run(client.async_get_timeseries_observation("24"))
+
+    assert client._get_json.await_count == 2

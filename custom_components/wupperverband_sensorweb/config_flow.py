@@ -29,6 +29,7 @@ from .const import (
     MAX_UPDATE_INTERVAL_MINUTES,
     MIN_UPDATE_INTERVAL_MINUTES,
 )
+from .metadata_cache import async_get_metadata_cache
 from .models import Station, TimeSeries
 
 
@@ -55,7 +56,9 @@ class WupperverbandConfigFlow(ConfigFlow, domain=DOMAIN):
                 async_get_clientsession(self.hass), self._endpoint
             )
             try:
-                self._stations = await self._client.async_get_stations()
+                self._stations = await async_get_metadata_cache(
+                    self.hass
+                ).async_get_stations(self._client)
             except WupperverbandConnectionError:
                 errors["base"] = "cannot_connect"
             except WupperverbandApiError:
@@ -88,7 +91,9 @@ class WupperverbandConfigFlow(ConfigFlow, domain=DOMAIN):
             )
             assert self._client is not None
             try:
-                self._timeseries = await self._client.async_get_timeseries(identifier)
+                self._timeseries = await async_get_metadata_cache(
+                    self.hass
+                ).async_get_timeseries(self._client, identifier)
             except WupperverbandConnectionError:
                 errors["base"] = "cannot_connect"
             except WupperverbandApiError:

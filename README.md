@@ -10,6 +10,8 @@ Benutzerdefinierte Home-Assistant-Integration für ausgewählte Messreihen aus d
 - alphabetisch sortierte Auswahl der veröffentlichten FluGGS-Stationen
 - anschließende Auswahl einer Messgröße und ihres Messverfahrens
 - eindeutiger Abruf der gewählten Messreihe über ihre Sensor-Web-ID
+- persistenter 48-Stunden-Cache für Stations- und Messreihen-Metadaten
+- ungecachter Live-Abruf der Messwerte bei jeder Aktualisierung
 - Maßeinheit und Messzeitpunkt aus dem SOS-Dokument
 - konfigurierbares Aktualisierungsintervall, mindestens fünf Minuten
 - konfigurierbare Erkennung veralteter Messwerte
@@ -59,6 +61,8 @@ Maßgeblich sind die jeweils aktuellen Bedingungen des Wupperverbandes:
 ## Architektur
 
 Jeder Konfigurationseintrag repräsentiert genau eine Station und Messreihe. Während der Einrichtung lädt die Integration zunächst die Stationsliste und danach nur die Messreihen der ausgewählten Station. Im laufenden Betrieb fragt sie ausschließlich den jüngsten Wert der gespeicherten Messreihen-ID ab.
+
+Stations-/Bauwerkslisten und Messreihendefinitionen ändern sich selten und werden deshalb für 48 Stunden im Home-Assistant-Speicher persistiert. Der Cache übersteht Neustarts; bei einem vorübergehenden API-Ausfall kann der zuletzt gespeicherte Metadatenstand weiterhin für die Einrichtung verwendet werden. Messwerte werden ausdrücklich nicht in diesem Metadaten-Cache abgelegt.
 
 ## Entwicklung und Tests
 
