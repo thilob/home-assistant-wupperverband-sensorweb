@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sos:Capabilities xmlns:sos="http://www.opengis.net/sos/2.0" xmlns:sos20="http://www.opengis.net/sos/2.0" xmlns:gml="http://www.opengis.net/gml/3.2" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <sos:contents>
+    <sos:Contents>
+      <sos:observationOffering>
+        <sos20:ObservationOffering>
+          <gml:identifier codeSpace="http://example.test">offering-1</gml:identifier>
+          <gml:name>Pegel Beispiel</gml:name>
+          <sos20:procedure xlink:href="urn:procedure:1"/>
+          <sos20:observableProperty xlink:href="urn:property:water-level"/>
+          <sos20:observableProperty xlink:href="urn:property:discharge"/>
+          <sos20:featureOfInterest xlink:href="urn:feature:station-1"/>
+        </sos20:ObservationOffering>
+      </sos:observationOffering>
+    </sos:Contents>
+  </sos:contents>
+</sos:Capabilities>

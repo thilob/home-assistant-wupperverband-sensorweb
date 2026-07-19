@@ -1,0 +1,43 @@
+{
+  "title": "Wupperverband Sensor Web",
+  "config": {
+    "step": {
+      "user": {
+        "title": "SOS-Dienst verbinden",
+        "description": "Die Nutzung der Daten ist nur im Rahmen der Nutzungsbedingungen des Wupperverbandes zulässig. Insbesondere ist eine kommerzielle Nutzung ausgeschlossen.",
+        "data": {"endpoint": "SOS-Endpunkt"}
+      },
+      "offering": {
+        "title": "Messangebot auswählen",
+        "data": {"offering": "Station / Messangebot"}
+      },
+      "property": {
+        "title": "Messgröße auswählen",
+        "data": {
+          "observed_property": "Messgröße",
+          "display_name": "Anzeigename (optional)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbindung zum SOS-Dienst fehlgeschlagen.",
+      "invalid_response": "Der Dienst antwortet nicht mit einem unterstützten SOS-2.0-Dokument.",
+      "unknown": "Unerwarteter Fehler. Details stehen im Home-Assistant-Protokoll."
+    },
+    "abort": {
+      "already_configured": "Diese Messreihe ist bereits konfiguriert.",
+      "no_observed_properties": "Für dieses Messangebot wurden keine Messgrößen veröffentlicht."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Abruf konfigurieren",
+        "data": {
+          "update_interval": "Aktualisierungsintervall in Minuten",
+          "stale_after": "Nach wie vielen Minuten gelten Daten als veraltet?"
+        }
+      }
+    }
+  }
+}
