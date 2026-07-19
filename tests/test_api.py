@@ -100,7 +100,12 @@ def test_measurement_requests_are_not_cached() -> None:
     response = {
         "id": "24",
         "uom": "m³/s",
-        "lastValue": {"timestamp": "2026-07-19T17:39:01Z", "value": 6.57},
+        "lastValue": {
+            "timestamp": (
+                datetime.now(UTC) - timedelta(hours=23, minutes=59)
+            ).isoformat(),
+            "value": 6.57,
+        },
         "feature": {"id": "47"},
         "parameters": {"phenomenon": {"label": "Abfluss"}},
     }
@@ -124,7 +129,7 @@ def test_measurement_requests_are_not_cached() -> None:
         ),
         (
             {
-                "timestamp": (datetime.now(UTC) + timedelta(minutes=6)).isoformat(),
+                "timestamp": (datetime.now(UTC) + timedelta(seconds=1)).isoformat(),
                 "value": 6.57,
             },
             "future timestamp",

@@ -64,7 +64,7 @@ Jeder Konfigurationseintrag repräsentiert genau eine Station und Messreihe. Wä
 
 Stations-/Bauwerkslisten und Messreihendefinitionen ändern sich selten und werden deshalb für 48 Stunden im Home-Assistant-Speicher persistiert. Der Cache übersteht Neustarts; bei einem vorübergehenden API-Ausfall kann der zuletzt gespeicherte Metadatenstand weiterhin für die Einrichtung verwendet werden. Messwerte werden ausdrücklich nicht in diesem Metadaten-Cache abgelegt.
 
-Ein Messwert wird nur übernommen, wenn er einen gültigen Zeitstempel besitzt, höchstens 24 Stunden alt ist und nicht mehr als fünf Minuten in der Zukunft liegt. Ungültige Werte führen bis zum nächsten erfolgreichen Live-Abruf zu einer nicht verfügbaren Entität.
+Ein Messwert wird nur übernommen, wenn er einen gültigen Zeitstempel besitzt und im Zeitfenster von jetzt bis höchstens 24 Stunden in der Vergangenheit liegt. Zukünftige Zeitstempel sind ungültig. Ungültige Werte führen bis zum nächsten erfolgreichen Live-Abruf zu einer nicht verfügbaren Entität.
 
 ## Entwicklung und Tests
 

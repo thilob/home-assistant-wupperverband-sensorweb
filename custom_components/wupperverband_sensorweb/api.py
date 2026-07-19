@@ -12,7 +12,7 @@ from xml.etree import ElementTree as ET
 
 from aiohttp import ClientError, ClientResponseError, ClientSession
 
-from .const import MAX_FUTURE_TIMESTAMP_OFFSET, MAX_OBSERVATION_AGE
+from .const import MAX_OBSERVATION_AGE
 from .models import Observation, Offering, Station, TimeSeries
 
 _LOGGER = logging.getLogger(__name__)
@@ -400,7 +400,7 @@ class WupperverbandSosClient:
             raise WupperverbandInvalidResponseError(
                 "Latest value is older than 24 hours"
             )
-        if timestamp > now + MAX_FUTURE_TIMESTAMP_OFFSET:
+        if timestamp > now:
             raise WupperverbandInvalidResponseError(
                 "Latest value has an invalid future timestamp"
             )
