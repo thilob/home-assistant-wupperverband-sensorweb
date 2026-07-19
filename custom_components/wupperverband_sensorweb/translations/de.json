@@ -3,30 +3,30 @@
   "config": {
     "step": {
       "user": {
-        "title": "SOS-Dienst verbinden",
+        "title": "Sensor-Web-Dienst verbinden",
         "description": "Die Nutzung der Daten ist nur im Rahmen der Nutzungsbedingungen des Wupperverbandes zulässig. Insbesondere ist eine kommerzielle Nutzung ausgeschlossen.",
-        "data": {"endpoint": "SOS-Endpunkt"}
+        "data": {"endpoint": "Sensor-Web-Endpunkt"}
       },
-      "offering": {
-        "title": "Messangebot auswählen",
-        "data": {"offering": "Station / Messangebot"}
+      "station": {
+        "title": "Station auswählen",
+        "data": {"station": "Station"}
       },
-      "property": {
-        "title": "Messgröße auswählen",
+      "timeseries": {
+        "title": "Messreihe auswählen",
         "data": {
-          "observed_property": "Messgröße",
+          "timeseries": "Messgröße und Verfahren",
           "display_name": "Anzeigename (optional)"
         }
       }
     },
     "error": {
-      "cannot_connect": "Verbindung zum SOS-Dienst fehlgeschlagen.",
-      "invalid_response": "Der Dienst antwortet nicht mit einem unterstützten SOS-2.0-Dokument.",
+      "cannot_connect": "Verbindung zum Sensor-Web-Dienst fehlgeschlagen.",
+      "invalid_response": "Der Dienst antwortet nicht mit unterstützten Stations- und Messreihendaten.",
       "unknown": "Unerwarteter Fehler. Details stehen im Home-Assistant-Protokoll."
     },
     "abort": {
       "already_configured": "Diese Messreihe ist bereits konfiguriert.",
-      "no_observed_properties": "Für dieses Messangebot wurden keine Messgrößen veröffentlicht."
+      "no_timeseries": "Für diese Station wurden keine Messreihen veröffentlicht."
     }
   },
   "options": {

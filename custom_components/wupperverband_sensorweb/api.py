@@ -11,7 +11,7 @@ from xml.etree import ElementTree as ET
 
 from aiohttp import ClientError, ClientResponseError, ClientSession
 
-from .models import Observation, Offering
+from .models import Observation, Offering, Station, TimeSeries
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -265,6 +265,16 @@ class WupperverbandSosClient:
         self._session = session
         self.endpoint = endpoint.rstrip("?")
 
+    @property
+    def api_endpoint(self) -> str:
+        """Return the Sensor Web REST API matching the configured SOS URL."""
+        endpoint = self.endpoint.rstrip("/")
+        if endpoint.endswith("/service"):
+            endpoint = endpoint[: -len("/service")]
+        if not endpoint.endswith("/api"):
+            endpoint = f"{endpoint}/api"
+        return f"{endpoint}/"
+
     async def _get(self, params: dict[str, str]) -> bytes:
         try:
             async with asyncio.timeout(REQUEST_TIMEOUT_SECONDS):
@@ -273,6 +283,122 @@ class WupperverbandSosClient:
                 return await response.read()
         except (TimeoutError, ClientError, ClientResponseError) as err:
             raise WupperverbandConnectionError(str(err)) from err
+
+    async def _get_json(
+        self, path: str, params: dict[str, str] | None = None
+    ) -> object:
+        try:
+            async with asyncio.timeout(REQUEST_TIMEOUT_SECONDS):
+                response = await self._session.get(
+                    f"{self.api_endpoint}{path}", params=params
+                )
+                response.raise_for_status()
+                return await response.json(content_type=None)
+        except (TimeoutError, ClientError, ClientResponseError) as err:
+            raise WupperverbandConnectionError(str(err)) from err
+        except (ValueError, TypeError) as err:
+            raise WupperverbandInvalidResponseError(
+                "Invalid Sensor Web API response"
+            ) from err
+
+    async def async_get_stations(self) -> list[Station]:
+        """Return monitoring stations exposed by the Sensor Web API."""
+        payload = await self._get_json("features", {"locale": "de"})
+        if not isinstance(payload, list):
+            raise WupperverbandInvalidResponseError("Invalid station list")
+
+        stations: list[Station] = []
+        for item in payload:
+            if not isinstance(item, dict) or "id" not in item:
+                continue
+            properties = item.get("properties") or {}
+            geometry = item.get("geometry") or {}
+            coordinates = geometry.get("coordinates") or []
+            stations.append(
+                Station(
+                    identifier=str(item["id"]),
+                    name=str(properties.get("label") or item["id"]),
+                    longitude=coordinates[0] if len(coordinates) >= 2 else None,
+                    latitude=coordinates[1] if len(coordinates) >= 2 else None,
+                )
+            )
+        if not stations:
+            raise WupperverbandInvalidResponseError("No stations found")
+        return sorted(stations, key=lambda item: item.name.casefold())
+
+    async def async_get_timeseries(self, station_id: str) -> list[TimeSeries]:
+        """Return measurement series available for one station."""
+        payload = await self._get_json(
+            "timeseries",
+            {"features": station_id, "expanded": "true", "locale": "de"},
+        )
+        if not isinstance(payload, list):
+            raise WupperverbandInvalidResponseError("Invalid time series list")
+
+        series: list[TimeSeries] = []
+        for item in payload:
+            if not isinstance(item, dict) or "id" not in item:
+                continue
+            feature = item.get("feature") or {}
+            properties = feature.get("properties") or {}
+            parameters = item.get("parameters") or {}
+            phenomenon = parameters.get("phenomenon") or {}
+            procedure = parameters.get("procedure") or {}
+            item_station_id = str(feature.get("id") or station_id)
+            if item_station_id != station_id:
+                continue
+            series.append(
+                TimeSeries(
+                    identifier=str(item["id"]),
+                    name=str(item.get("label") or item["id"]),
+                    station_id=item_station_id,
+                    station_name=str(properties.get("label") or station_id),
+                    phenomenon=str(
+                        phenomenon.get("label")
+                        or phenomenon.get("domainId")
+                        or item.get("label")
+                        or item["id"]
+                    ),
+                    procedure=(
+                        str(procedure.get("label") or procedure.get("domainId"))
+                        if procedure
+                        else None
+                    ),
+                    unit=item.get("uom"),
+                )
+            )
+        return sorted(
+            series,
+            key=lambda item: (
+                item.phenomenon.casefold(),
+                (item.procedure or "").casefold(),
+            ),
+        )
+
+    async def async_get_timeseries_observation(self, timeseries_id: str) -> Observation:
+        """Return the latest value for one exact measurement series."""
+        payload = await self._get_json(f"timeseries/{timeseries_id}", {"locale": "de"})
+        if not isinstance(payload, dict):
+            raise WupperverbandInvalidResponseError("Invalid time series response")
+        latest = payload.get("lastValue") or {}
+        if "value" not in latest:
+            raise WupperverbandInvalidResponseError("No latest value found")
+        feature = payload.get("feature") or {}
+        parameters = payload.get("parameters") or {}
+        phenomenon = parameters.get("phenomenon") or {}
+        procedure = parameters.get("procedure") or {}
+        return Observation(
+            value=_coerce_value(str(latest["value"])),
+            unit=payload.get("uom"),
+            timestamp=_parse_datetime(latest.get("timestamp")),
+            procedure=str(procedure.get("label") or procedure.get("domainId") or "")
+            or None,
+            feature_of_interest=str(feature.get("id") or "") or None,
+            observed_property=str(
+                phenomenon.get("label") or phenomenon.get("domainId") or ""
+            )
+            or None,
+        )
 
     async def async_get_offerings(self) -> list[Offering]:
         """Return available SOS observation offerings."""

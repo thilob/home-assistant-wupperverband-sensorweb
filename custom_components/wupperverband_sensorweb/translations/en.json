@@ -2,12 +2,12 @@
   "title": "Wupperverband Sensor Web",
   "config": {
     "step": {
-      "user": {"title": "Connect SOS service", "description": "Use of the data is subject to the Wupperverband terms. Commercial use is prohibited.", "data": {"endpoint": "SOS endpoint"}},
-      "offering": {"title": "Select observation offering", "data": {"offering": "Station / offering"}},
-      "property": {"title": "Select observed property", "data": {"observed_property": "Observed property", "display_name": "Display name (optional)"}}
+      "user": {"title": "Connect Sensor Web service", "description": "Use of the data is subject to the Wupperverband terms. Commercial use is prohibited.", "data": {"endpoint": "Sensor Web endpoint"}},
+      "station": {"title": "Select station", "data": {"station": "Station"}},
+      "timeseries": {"title": "Select time series", "data": {"timeseries": "Measurement and procedure", "display_name": "Display name (optional)"}}
     },
-    "error": {"cannot_connect": "Could not connect to the SOS service.", "invalid_response": "The service did not return a supported SOS 2.0 document.", "unknown": "Unexpected error. See the Home Assistant log."},
-    "abort": {"already_configured": "This time series is already configured.", "no_observed_properties": "No observed properties were published for this offering."}
+    "error": {"cannot_connect": "Could not connect to the Sensor Web service.", "invalid_response": "The service did not return supported station and time series data.", "unknown": "Unexpected error. See the Home Assistant log."},
+    "abort": {"already_configured": "This time series is already configured.", "no_timeseries": "No time series were published for this station."}
   },
   "options": {"step": {"init": {"title": "Configure polling", "data": {"update_interval": "Update interval in minutes", "stale_after": "Mark data stale after minutes"}}}}
 }

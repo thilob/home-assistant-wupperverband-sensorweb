@@ -14,14 +14,13 @@ from .api import (
     WupperverbandApiError,
     WupperverbandConnectionError,
     WupperverbandSosClient,
-    humanize_identifier,
 )
 from .const import (
     CONF_DISPLAY_NAME,
     CONF_ENDPOINT,
-    CONF_OBSERVED_PROPERTY,
-    CONF_OFFERING,
     CONF_STALE_AFTER,
+    CONF_STATION,
+    CONF_TIMESERIES,
     CONF_UPDATE_INTERVAL,
     DEFAULT_ENDPOINT,
     DEFAULT_STALE_AFTER_MINUTES,
@@ -30,7 +29,7 @@ from .const import (
     MAX_UPDATE_INTERVAL_MINUTES,
     MIN_UPDATE_INTERVAL_MINUTES,
 )
-from .models import Offering
+from .models import Station, TimeSeries
 
 
 class WupperverbandConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -40,8 +39,10 @@ class WupperverbandConfigFlow(ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         self._endpoint = DEFAULT_ENDPOINT
-        self._offerings: list[Offering] = []
-        self._selected_offering: Offering | None = None
+        self._client: WupperverbandSosClient | None = None
+        self._stations: list[Station] = []
+        self._selected_station: Station | None = None
+        self._timeseries: list[TimeSeries] = []
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -50,11 +51,11 @@ class WupperverbandConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             self._endpoint = user_input[CONF_ENDPOINT].strip()
-            client = WupperverbandSosClient(
+            self._client = WupperverbandSosClient(
                 async_get_clientsession(self.hass), self._endpoint
             )
             try:
-                self._offerings = await client.async_get_offerings()
+                self._stations = await self._client.async_get_stations()
             except WupperverbandConnectionError:
                 errors["base"] = "cannot_connect"
             except WupperverbandApiError:
@@ -62,7 +63,7 @@ class WupperverbandConfigFlow(ConfigFlow, domain=DOMAIN):
             except Exception:  # noqa: BLE001 - config flow must recover cleanly
                 errors["base"] = "unknown"
             else:
-                return await self.async_step_offering()
+                return await self.async_step_station()
 
         schema = vol.Schema(
             {
@@ -75,26 +76,39 @@ class WupperverbandConfigFlow(ConfigFlow, domain=DOMAIN):
         )
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
 
-    async def async_step_offering(
+    async def async_step_station(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Select an observation offering."""
+        """Select a monitoring station."""
+        errors: dict[str, str] = {}
         if user_input is not None:
-            identifier = user_input[CONF_OFFERING]
-            self._selected_offering = next(
-                item for item in self._offerings if item.identifier == identifier
+            identifier = user_input[CONF_STATION]
+            self._selected_station = next(
+                item for item in self._stations if item.identifier == identifier
             )
-            return await self.async_step_property()
+            assert self._client is not None
+            try:
+                self._timeseries = await self._client.async_get_timeseries(identifier)
+            except WupperverbandConnectionError:
+                errors["base"] = "cannot_connect"
+            except WupperverbandApiError:
+                errors["base"] = "invalid_response"
+            except Exception:  # noqa: BLE001 - config flow must recover cleanly
+                errors["base"] = "unknown"
+            else:
+                if not self._timeseries:
+                    return self.async_abort(reason="no_timeseries")
+                return await self.async_step_timeseries()
 
         options = [
             selector.SelectOptionDict(value=item.identifier, label=item.name)
-            for item in self._offerings
+            for item in self._stations
         ]
         return self.async_show_form(
-            step_id="offering",
+            step_id="station",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_OFFERING): selector.SelectSelector(
+                    vol.Required(CONF_STATION): selector.SelectSelector(
                         selector.SelectSelectorConfig(
                             options=options,
                             mode=selector.SelectSelectorMode.DROPDOWN,
@@ -102,30 +116,34 @@ class WupperverbandConfigFlow(ConfigFlow, domain=DOMAIN):
                     )
                 }
             ),
+            errors=errors,
         )
 
-    async def async_step_property(
+    async def async_step_timeseries(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Select observed property and finish."""
-        assert self._selected_offering is not None
-        properties = self._selected_offering.observed_properties
+        """Select one exact measurement series and finish."""
+        assert self._selected_station is not None
 
         if user_input is not None:
-            observed_property = user_input[CONF_OBSERVED_PROPERTY]
+            timeseries_id = user_input[CONF_TIMESERIES]
+            timeseries = next(
+                item for item in self._timeseries if item.identifier == timeseries_id
+            )
             display_name = user_input.get(CONF_DISPLAY_NAME, "").strip()
-            unique = f"{self._endpoint}|{self._selected_offering.identifier}|{observed_property}"
+            unique = f"{self._endpoint}|{timeseries_id}"
             await self.async_set_unique_id(unique)
             self._abort_if_unique_id_configured()
-            title = display_name or (
-                f"{self._selected_offering.name} – {humanize_identifier(observed_property)}"
+            title = (
+                display_name
+                or f"{self._selected_station.name} – {timeseries.phenomenon}"
             )
             return self.async_create_entry(
                 title=title,
                 data={
                     CONF_ENDPOINT: self._endpoint,
-                    CONF_OFFERING: self._selected_offering.identifier,
-                    CONF_OBSERVED_PROPERTY: observed_property,
+                    CONF_STATION: self._selected_station.identifier,
+                    CONF_TIMESERIES: timeseries_id,
                     CONF_DISPLAY_NAME: title,
                 },
                 options={
@@ -134,18 +152,22 @@ class WupperverbandConfigFlow(ConfigFlow, domain=DOMAIN):
                 },
             )
 
-        if not properties:
-            return self.async_abort(reason="no_observed_properties")
-
         options = [
-            selector.SelectOptionDict(value=value, label=humanize_identifier(value))
-            for value in properties
+            selector.SelectOptionDict(
+                value=item.identifier,
+                label=" – ".join(
+                    part
+                    for part in (item.phenomenon, item.procedure, item.unit)
+                    if part
+                ),
+            )
+            for item in self._timeseries
         ]
         return self.async_show_form(
-            step_id="property",
+            step_id="timeseries",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_OBSERVED_PROPERTY): selector.SelectSelector(
+                    vol.Required(CONF_TIMESERIES): selector.SelectSelector(
                         selector.SelectSelectorConfig(
                             options=options,
                             mode=selector.SelectSelectorMode.DROPDOWN,

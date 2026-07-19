@@ -18,6 +18,29 @@ class Offering:
 
 
 @dataclass(frozen=True, slots=True)
+class Station:
+    """A selectable monitoring station."""
+
+    identifier: str
+    name: str
+    longitude: float | None = None
+    latitude: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TimeSeries:
+    """A measurement series belonging to one station."""
+
+    identifier: str
+    name: str
+    station_id: str
+    station_name: str
+    phenomenon: str
+    procedure: str | None = None
+    unit: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class Observation:
     """A single latest observation."""
 

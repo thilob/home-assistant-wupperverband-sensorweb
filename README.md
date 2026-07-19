@@ -7,9 +7,9 @@ Benutzerdefinierte Home-Assistant-Integration für ausgewählte Messreihen aus d
 ## Funktionen
 
 - vollständige Einrichtung über die Home-Assistant-Oberfläche
-- Abruf der verfügbaren SOS-Messangebote über `GetCapabilities`
-- Auswahl einer Station beziehungsweise eines Offerings und einer Messgröße
-- Abruf des jeweils neuesten Messwertes über `GetObservation`
+- alphabetisch sortierte Auswahl der veröffentlichten FluGGS-Stationen
+- anschließende Auswahl einer Messgröße und ihres Messverfahrens
+- eindeutiger Abruf der gewählten Messreihe über ihre Sensor-Web-ID
 - Maßeinheit und Messzeitpunkt aus dem SOS-Dokument
 - konfigurierbares Aktualisierungsintervall, mindestens fünf Minuten
 - konfigurierbare Erkennung veralteter Messwerte
@@ -58,7 +58,7 @@ Maßgeblich sind die jeweils aktuellen Bedingungen des Wupperverbandes:
 
 ## Architektur
 
-Jeder Konfigurationseintrag repräsentiert genau eine Kombination aus SOS-Offering und beobachteter Messgröße. Dies hält den Datenabruf klein und vermeidet einen lokalen Spiegel der gesamten Datenbank. Die Integration lädt die Angebotsliste nur während der Einrichtung und fragt danach ausschließlich den jüngsten Wert der ausgewählten Reihe ab.
+Jeder Konfigurationseintrag repräsentiert genau eine Station und Messreihe. Während der Einrichtung lädt die Integration zunächst die Stationsliste und danach nur die Messreihen der ausgewählten Station. Im laufenden Betrieb fragt sie ausschließlich den jüngsten Wert der gespeicherten Messreihen-ID ab.
 
 ## Entwicklung und Tests
 

@@ -22,8 +22,7 @@ class WupperverbandCoordinator(DataUpdateCoordinator[Observation]):
         self,
         hass: HomeAssistant,
         client: WupperverbandSosClient,
-        offering: str,
-        observed_property: str,
+        timeseries_id: str,
         update_interval: timedelta,
     ) -> None:
         super().__init__(
@@ -33,13 +32,12 @@ class WupperverbandCoordinator(DataUpdateCoordinator[Observation]):
             update_interval=update_interval,
         )
         self.client = client
-        self.offering = offering
-        self.observed_property = observed_property
+        self.timeseries_id = timeseries_id
 
     async def _async_update_data(self) -> Observation:
         try:
-            return await self.client.async_get_latest_observation(
-                self.offering, self.observed_property
+            return await self.client.async_get_timeseries_observation(
+                self.timeseries_id
             )
         except WupperverbandApiError as err:
             raise UpdateFailed(

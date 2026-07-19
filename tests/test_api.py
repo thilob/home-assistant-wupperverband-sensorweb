@@ -1,9 +1,12 @@
+import asyncio
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 
 from custom_components.wupperverband_sensorweb.api import (
     WupperverbandInvalidResponseError,
+    WupperverbandSosClient,
     humanize_identifier,
     parse_capabilities,
     parse_observation,
@@ -44,3 +47,48 @@ def test_humanize_identifier() -> None:
         humanize_identifier("https://example.test/observed/water-level")
         == "water level"
     )
+
+
+def test_api_endpoint_is_derived_from_sos_endpoint() -> None:
+    client = WupperverbandSosClient(None, "https://example.test/sws5/service")
+    assert client.api_endpoint == "https://example.test/sws5/api/"
+
+
+def test_station_and_timeseries_selection() -> None:
+    client = WupperverbandSosClient(None, "https://example.test/sws5/service")
+    client._get_json = AsyncMock(
+        side_effect=[
+            [
+                {
+                    "id": "47",
+                    "properties": {"label": "Unterburg-Wupper"},
+                    "geometry": {"coordinates": [7.14, 51.13]},
+                }
+            ],
+            [
+                {
+                    "id": "24",
+                    "label": "Abfluss, Einzelwerte, Unterburg-Wupper",
+                    "uom": "m³/s",
+                    "feature": {
+                        "id": "47",
+                        "properties": {"label": "Unterburg-Wupper"},
+                    },
+                    "parameters": {
+                        "phenomenon": {"label": "Abfluss"},
+                        "procedure": {"label": "Einzelwerte"},
+                    },
+                },
+                {"id": "wrong-station", "feature": {"id": "99"}},
+            ],
+        ]
+    )
+
+    stations = asyncio.run(client.async_get_stations())
+    series = asyncio.run(client.async_get_timeseries("47"))
+
+    assert stations[0].name == "Unterburg-Wupper"
+    assert stations[0].latitude == 51.13
+    assert len(series) == 1
+    assert series[0].identifier == "24"
+    assert series[0].phenomenon == "Abfluss"
