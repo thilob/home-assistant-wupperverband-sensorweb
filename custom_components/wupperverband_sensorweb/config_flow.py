@@ -18,12 +18,10 @@ from .api import (
 from .const import (
     CONF_DISPLAY_NAME,
     CONF_ENDPOINT,
-    CONF_STALE_AFTER,
     CONF_STATION,
     CONF_TIMESERIES,
     CONF_UPDATE_INTERVAL,
     DEFAULT_ENDPOINT,
-    DEFAULT_STALE_AFTER_MINUTES,
     DEFAULT_UPDATE_INTERVAL_MINUTES,
     DOMAIN,
     MAX_UPDATE_INTERVAL_MINUTES,
@@ -153,7 +151,6 @@ class WupperverbandConfigFlow(ConfigFlow, domain=DOMAIN):
                 },
                 options={
                     CONF_UPDATE_INTERVAL: DEFAULT_UPDATE_INTERVAL_MINUTES,
-                    CONF_STALE_AFTER: DEFAULT_STALE_AFTER_MINUTES,
                 },
             )
 
@@ -217,12 +214,6 @@ class WupperverbandOptionsFlow(OptionsFlow):
                             max=MAX_UPDATE_INTERVAL_MINUTES,
                         ),
                     ),
-                    vol.Required(
-                        CONF_STALE_AFTER,
-                        default=options.get(
-                            CONF_STALE_AFTER, DEFAULT_STALE_AFTER_MINUTES
-                        ),
-                    ): vol.All(vol.Coerce(int), vol.Range(min=5, max=10080)),
                 }
             ),
         )

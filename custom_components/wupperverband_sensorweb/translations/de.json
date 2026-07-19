@@ -34,8 +34,7 @@
       "init": {
         "title": "Abruf konfigurieren",
         "data": {
-          "update_interval": "Aktualisierungsintervall in Minuten",
-          "stale_after": "Nach wie vielen Minuten gelten Daten als veraltet?"
+          "update_interval": "Aktualisierungsintervall in Minuten"
         }
       }
     }

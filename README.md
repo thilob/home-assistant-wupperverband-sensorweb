@@ -14,7 +14,7 @@ Benutzerdefinierte Home-Assistant-Integration für ausgewählte Messreihen aus d
 - ungecachter Live-Abruf der Messwerte bei jeder Aktualisierung
 - Maßeinheit und Messzeitpunkt aus dem SOS-Dokument
 - konfigurierbares Aktualisierungsintervall, mindestens fünf Minuten
-- konfigurierbare Erkennung veralteter Messwerte
+- feste Validierung: Messwerte dürfen höchstens 24 Stunden alt sein
 - Quellenhinweis als Entitätsattribut
 - deutsche und englische Übersetzung
 - vorbereitet für HACS, Hassfest und HACS Action
@@ -63,6 +63,8 @@ Maßgeblich sind die jeweils aktuellen Bedingungen des Wupperverbandes:
 Jeder Konfigurationseintrag repräsentiert genau eine Station und Messreihe. Während der Einrichtung lädt die Integration zunächst die Stationsliste und danach nur die Messreihen der ausgewählten Station. Im laufenden Betrieb fragt sie ausschließlich den jüngsten Wert der gespeicherten Messreihen-ID ab.
 
 Stations-/Bauwerkslisten und Messreihendefinitionen ändern sich selten und werden deshalb für 48 Stunden im Home-Assistant-Speicher persistiert. Der Cache übersteht Neustarts; bei einem vorübergehenden API-Ausfall kann der zuletzt gespeicherte Metadatenstand weiterhin für die Einrichtung verwendet werden. Messwerte werden ausdrücklich nicht in diesem Metadaten-Cache abgelegt.
+
+Ein Messwert wird nur übernommen, wenn er einen gültigen Zeitstempel besitzt, höchstens 24 Stunden alt ist und nicht mehr als fünf Minuten in der Zukunft liegt. Ungültige Werte führen bis zum nächsten erfolgreichen Live-Abruf zu einer nicht verfügbaren Entität.
 
 ## Entwicklung und Tests
 

@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 from collections.abc import Iterable
-from datetime import datetime
+from datetime import UTC, datetime
 from urllib.parse import unquote, urlparse
 from xml.etree import ElementTree as ET
 
 from aiohttp import ClientError, ClientResponseError, ClientSession
 
+from .const import MAX_FUTURE_TIMESTAMP_OFFSET, MAX_OBSERVATION_AGE
 from .models import Observation, Offering, Station, TimeSeries
 
 _LOGGER = logging.getLogger(__name__)
@@ -381,16 +383,35 @@ class WupperverbandSosClient:
         if not isinstance(payload, dict):
             raise WupperverbandInvalidResponseError("Invalid time series response")
         latest = payload.get("lastValue") or {}
-        if "value" not in latest:
+        value = latest.get("value")
+        if (
+            not isinstance(value, (int, float))
+            or isinstance(value, bool)
+            or not math.isfinite(value)
+        ):
             raise WupperverbandInvalidResponseError("No latest value found")
+        timestamp = _parse_datetime(latest.get("timestamp"))
+        if timestamp is None:
+            raise WupperverbandInvalidResponseError("Missing or invalid timestamp")
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=UTC)
+        now = datetime.now(UTC)
+        if timestamp < now - MAX_OBSERVATION_AGE:
+            raise WupperverbandInvalidResponseError(
+                "Latest value is older than 24 hours"
+            )
+        if timestamp > now + MAX_FUTURE_TIMESTAMP_OFFSET:
+            raise WupperverbandInvalidResponseError(
+                "Latest value has an invalid future timestamp"
+            )
         feature = payload.get("feature") or {}
         parameters = payload.get("parameters") or {}
         phenomenon = parameters.get("phenomenon") or {}
         procedure = parameters.get("procedure") or {}
         return Observation(
-            value=_coerce_value(str(latest["value"])),
+            value=float(value),
             unit=payload.get("uom"),
-            timestamp=_parse_datetime(latest.get("timestamp")),
+            timestamp=timestamp,
             procedure=str(procedure.get("label") or procedure.get("domainId") or "")
             or None,
             feature_of_interest=str(feature.get("id") or "") or None,

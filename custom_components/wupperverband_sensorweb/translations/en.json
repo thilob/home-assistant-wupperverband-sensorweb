@@ -9,5 +9,5 @@
     "error": {"cannot_connect": "Could not connect to the Sensor Web service.", "invalid_response": "The service did not return supported station and time series data.", "unknown": "Unexpected error. See the Home Assistant log."},
     "abort": {"already_configured": "This time series is already configured.", "no_timeseries": "No time series were published for this station."}
   },
-  "options": {"step": {"init": {"title": "Configure polling", "data": {"update_interval": "Update interval in minutes", "stale_after": "Mark data stale after minutes"}}}}
+  "options": {"step": {"init": {"title": "Configure polling", "data": {"update_interval": "Update interval in minutes"}}}}
 }

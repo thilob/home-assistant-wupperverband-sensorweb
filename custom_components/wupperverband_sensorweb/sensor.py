@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
@@ -21,10 +21,8 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     ATTRIBUTION,
     CONF_DISPLAY_NAME,
-    CONF_STALE_AFTER,
     CONF_STATION,
     CONF_TIMESERIES,
-    DEFAULT_STALE_AFTER_MINUTES,
     DOMAIN,
     MANUFACTURER,
     SOURCE_URL,
@@ -93,21 +91,6 @@ class WupperverbandSensor(CoordinatorEntity[WupperverbandCoordinator], SensorEnt
         return (
             _native_unit(self.coordinator.data.unit) if self.coordinator.data else None
         )
-
-    @property
-    def available(self) -> bool:
-        """Mark unavailable on communication failure or stale data."""
-        if not super().available or not self.coordinator.data:
-            return False
-        timestamp = self.coordinator.data.timestamp
-        if timestamp is None:
-            return True
-        if timestamp.tzinfo is None:
-            timestamp = timestamp.replace(tzinfo=UTC)
-        stale_after = self._entry.options.get(
-            CONF_STALE_AFTER, DEFAULT_STALE_AFTER_MINUTES
-        )
-        return datetime.now(UTC) - timestamp <= timedelta(minutes=stale_after)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

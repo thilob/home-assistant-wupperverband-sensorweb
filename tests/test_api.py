@@ -1,4 +1,5 @@
 import asyncio
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -109,3 +110,39 @@ def test_measurement_requests_are_not_cached() -> None:
     asyncio.run(client.async_get_timeseries_observation("24"))
 
     assert client._get_json.await_count == 2
+
+
+@pytest.mark.parametrize(
+    ("last_value", "message"),
+    [
+        (
+            {
+                "timestamp": (datetime.now(UTC) - timedelta(hours=25)).isoformat(),
+                "value": 6.57,
+            },
+            "older than 24 hours",
+        ),
+        (
+            {
+                "timestamp": (datetime.now(UTC) + timedelta(minutes=6)).isoformat(),
+                "value": 6.57,
+            },
+            "future timestamp",
+        ),
+        ({"timestamp": datetime.now(UTC).isoformat(), "value": None}, "No latest"),
+    ],
+)
+def test_invalid_measurements_are_rejected(last_value, message) -> None:
+    client = WupperverbandSosClient(None, "https://example.test/sws5/service")
+    client._get_json = AsyncMock(
+        return_value={
+            "id": "24",
+            "uom": "m³/s",
+            "lastValue": last_value,
+            "feature": {"id": "47"},
+            "parameters": {"phenomenon": {"label": "Abfluss"}},
+        }
+    )
+
+    with pytest.raises(WupperverbandInvalidResponseError, match=message):
+        asyncio.run(client.async_get_timeseries_observation("24"))
