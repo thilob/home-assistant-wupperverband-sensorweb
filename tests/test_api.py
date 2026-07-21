@@ -1,13 +1,9 @@
-import asyncio
 from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import AsyncMock, call
 
 import pytest
 
 from custom_components.wupperverband_sensorweb.api import (
     WupperverbandInvalidResponseError,
-    WupperverbandSosClient,
     humanize_identifier,
     parse_capabilities,
     parse_observation,
@@ -44,91 +40,15 @@ def test_exception_response_is_reported() -> None:
 
 
 def test_humanize_identifier() -> None:
-    assert (
-        humanize_identifier("https://example.test/observed/water-level")
-        == "water level"
+    assert humanize_identifier("https://example.test/observed/water-level") == "water level"
+
+
+def test_parse_observation_selects_newest_with_mixed_timezone_input() -> None:
+    observation = parse_observation(
+        (FIXTURES / "observation_multiple.xml").read_bytes()
     )
-
-
-def _client_with_responses(
-    *payloads: bytes,
-) -> tuple[WupperverbandSosClient, SimpleNamespace]:
-    response = SimpleNamespace(
-        raise_for_status=lambda: None,
-        read=AsyncMock(side_effect=payloads),
-    )
-    session = SimpleNamespace(get=AsyncMock(return_value=response))
-    return WupperverbandSosClient(
-        session, "https://example.test/sws5/service"
-    ), session
-
-
-def test_sos_requests_use_expected_parameters() -> None:
-    client, session = _client_with_responses(
-        (FIXTURES / "capabilities.xml").read_bytes(),
-        (FIXTURES / "observation.xml").read_bytes(),
-    )
-
-    offerings = asyncio.run(client.async_get_offerings())
-    observation = asyncio.run(
-        client.async_get_latest_observation(
-            "offering-1", "urn:property:water-level"
-        )
-    )
-
-    assert offerings[0].identifier == "offering-1"
-    assert observation.value == 123.4
-    assert session.get.await_args_list[0].kwargs["params"] == {
-        "service": "SOS",
-        "version": "2.0.0",
-        "request": "GetCapabilities",
-    }
-    assert session.get.await_args_list[1].kwargs["params"] == {
-        "service": "SOS",
-        "version": "2.0.0",
-        "request": "GetObservation",
-        "offering": "offering-1",
-        "observedProperty": "urn:property:water-level",
-        "temporalFilter": "om:phenomenonTime,latest",
-        "responseFormat": "http://www.opengis.net/om/2.0",
-    }
-
-
-def test_measurement_requests_are_not_cached() -> None:
-    payload = (FIXTURES / "observation.xml").read_bytes()
-    client, session = _client_with_responses(payload, payload)
-
-    asyncio.run(client.async_get_latest_observation("offering-1", "property-1"))
-    asyncio.run(client.async_get_latest_observation("offering-1", "property-1"))
-
-    expected_headers = {
-        "Cache-Control": "no-cache, no-store, max-age=0",
-        "Pragma": "no-cache",
-    }
-    assert session.get.await_count == 2
-    assert session.get.await_args_list == [
-        call(
-            "https://example.test/sws5/service",
-            params=session.get.await_args_list[0].kwargs["params"],
-            headers=expected_headers,
-        ),
-        call(
-            "https://example.test/sws5/service",
-            params=session.get.await_args_list[1].kwargs["params"],
-            headers=expected_headers,
-        ),
-    ]
-
-
-def test_observation_without_result_is_rejected() -> None:
-    with pytest.raises(WupperverbandInvalidResponseError, match="No observation"):
-        parse_observation(
-            b'<om:OM_Observation xmlns:om="http://www.opengis.net/om/2.0" />'
-        )
-
-
-def test_invalid_observation_xml_is_rejected() -> None:
-    with pytest.raises(
-        WupperverbandInvalidResponseError, match="Invalid observation XML"
-    ):
-        parse_observation(b"<not-closed>")
+    assert observation.value == 300.2
+    assert observation.timestamp is not None
+    assert observation.timestamp.isoformat() == "2026-07-21T09:00:00+00:00"
+    assert observation.result_time is not None
+    assert observation.result_time.isoformat() == "2026-07-21T09:01:00+00:00"

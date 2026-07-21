@@ -1,7 +1,7 @@
 """Sensor platform for Wupperverband Sensor Web."""
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
@@ -38,6 +38,8 @@ UNIT_MAP = {
     "%": PERCENTAGE,
     "percent": PERCENTAGE,
     "m": UnitOfLength.METERS,
+    "mNN": UnitOfLength.METERS,
+    "mNHN": UnitOfLength.METERS,
     "cm": UnitOfLength.CENTIMETERS,
     "mm": UnitOfLength.MILLIMETERS,
     "m3/s": UnitOfVolumeFlowRate.CUBIC_METERS_PER_SECOND,
@@ -49,6 +51,15 @@ def _native_unit(unit: str | None) -> str | None:
     if unit is None:
         return None
     return UNIT_MAP.get(unit, unit)
+
+
+def _as_utc(timestamp: datetime | None) -> datetime | None:
+    """Normalize a source timestamp for reliable comparisons."""
+    if timestamp is None:
+        return None
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=UTC)
+    return timestamp.astimezone(UTC)
 
 
 async def async_setup_entry(
@@ -66,10 +77,8 @@ class WupperverbandSensor(CoordinatorEntity[WupperverbandCoordinator], SensorEnt
     _attr_has_entity_name = True
     _attr_name = None
     _attr_state_class = SensorStateClass.MEASUREMENT
-    # The SOS is sampled periodically. Home Assistant normally writes a new
-    # recorder row only when the state or attributes change. Keep every
-    # successful source sample visible to the recorder, even if the rounded
-    # measurement value is unchanged.
+    # Record every successful poll, even when the source value is unchanged.
+    # This makes repeated source samples visible in HA history/statistics.
     _attr_force_update = True
 
     def __init__(self, entry: ConfigEntry[WupperverbandCoordinator]) -> None:
@@ -98,38 +107,61 @@ class WupperverbandSensor(CoordinatorEntity[WupperverbandCoordinator], SensorEnt
 
     @property
     def available(self) -> bool:
-        """Mark unavailable on communication failure or stale data."""
-        if not super().available or not self.coordinator.data:
-            return False
-        timestamp = self.coordinator.data.timestamp
-        if timestamp is None:
-            return True
-        if timestamp.tzinfo is None:
-            timestamp = timestamp.replace(tzinfo=UTC)
-        stale_after = self._entry.options.get(
-            CONF_STALE_AFTER, DEFAULT_STALE_AFTER_MINUTES
-        )
-        return datetime.now(UTC) - timestamp <= timedelta(minutes=stale_after)
+        """Remain available while the last successful value is present.
+
+        Source age is reported separately as ``data_stale``. An old source
+        timestamp must not erase the last valid numeric state or interrupt
+        recorder/statistics. Communication failures continue to be represented
+        by the coordinator's availability state.
+        """
+        return super().available and self.coordinator.data is not None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Expose provenance and original SOS metadata."""
-        data: Observation = self.coordinator.data
+        """Expose provenance, freshness and original SOS metadata."""
+        data: Observation | None = self.coordinator.data
+        if data is None:
+            return {
+                "attribution": ATTRIBUTION.format(year=datetime.now().year),
+                "offering": self._entry.data[CONF_OFFERING],
+                "observed_property": self._entry.data[CONF_OBSERVED_PROPERTY],
+            }
+
+        now = datetime.now(UTC)
+        stale_after = self._entry.options.get(
+            CONF_STALE_AFTER, DEFAULT_STALE_AFTER_MINUTES
+        )
+        measurement_time = _as_utc(data.timestamp)
+        measurement_age: float | None = None
+        if measurement_time is not None:
+            measurement_age = max(
+                0.0, (now - measurement_time).total_seconds() / 60
+            )
+
         attrs: dict[str, Any] = {
-            "attribution": ATTRIBUTION.format(year=datetime.now().year),
+            "attribution": ATTRIBUTION.format(year=now.year),
             "offering": self._entry.data[CONF_OFFERING],
             "observed_property": self._entry.data[CONF_OBSERVED_PROPERTY],
-            "poll_interval_minutes": int(
-                self.coordinator.update_interval.total_seconds() / 60
-            ) if self.coordinator.update_interval else None,
+            "poll_interval_minutes": (
+                int(self.coordinator.update_interval.total_seconds() / 60)
+                if self.coordinator.update_interval
+                else None
+            ),
+            "stale_after_minutes": stale_after,
+            "data_stale": (
+                measurement_age is not None and measurement_age > stale_after
+            ),
         }
-        if data.timestamp:
-            attrs["measurement_time"] = data.timestamp.isoformat()
-            timestamp = data.timestamp
-            if timestamp.tzinfo is None:
-                timestamp = timestamp.replace(tzinfo=UTC)
-            attrs["measurement_age_minutes"] = round(
-                (datetime.now(UTC) - timestamp).total_seconds() / 60, 1
+        if measurement_time is not None:
+            attrs["measurement_time"] = measurement_time.isoformat()
+            attrs["measurement_age_minutes"] = round(measurement_age or 0.0, 1)
+        if data.result_time is not None:
+            result_time = _as_utc(data.result_time)
+            if result_time is not None:
+                attrs["result_time"] = result_time.isoformat()
+        if self.coordinator.last_successful_fetch is not None:
+            attrs["last_successful_fetch"] = (
+                self.coordinator.last_successful_fetch.isoformat()
             )
         if data.procedure:
             attrs["procedure"] = data.procedure

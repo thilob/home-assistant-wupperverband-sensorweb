@@ -1,5 +1,4 @@
 """Wupperverband Sensor Web integration."""
-
 from __future__ import annotations
 
 from datetime import timedelta
@@ -12,7 +11,8 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .api import WupperverbandSosClient
 from .const import (
     CONF_ENDPOINT,
-    CONF_TIMESERIES,
+    CONF_OBSERVED_PROPERTY,
+    CONF_OFFERING,
     CONF_UPDATE_INTERVAL,
     DEFAULT_UPDATE_INTERVAL_MINUTES,
 )
@@ -23,9 +23,7 @@ PLATFORMS: list[Platform] = [Platform.SENSOR]
 type WupperverbandConfigEntry = ConfigEntry[WupperverbandCoordinator]
 
 
-async def async_setup_entry(
-    hass: HomeAssistant, entry: WupperverbandConfigEntry
-) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: WupperverbandConfigEntry) -> bool:
     """Set up Wupperverband Sensor Web from a config entry."""
     session = async_get_clientsession(hass)
     client = WupperverbandSosClient(session, entry.data[CONF_ENDPOINT])
@@ -33,7 +31,8 @@ async def async_setup_entry(
     coordinator = WupperverbandCoordinator(
         hass,
         client,
-        entry.data[CONF_TIMESERIES],
+        entry.data[CONF_OFFERING],
+        entry.data[CONF_OBSERVED_PROPERTY],
         timedelta(minutes=minutes),
     )
     await coordinator.async_config_entry_first_refresh()
@@ -43,9 +42,7 @@ async def async_setup_entry(
     return True
 
 
-async def async_unload_entry(
-    hass: HomeAssistant, entry: WupperverbandConfigEntry
-) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: WupperverbandConfigEntry) -> bool:
     """Unload a config entry."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 

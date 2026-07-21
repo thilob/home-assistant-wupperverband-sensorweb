@@ -17,6 +17,18 @@ Benutzerdefinierte Home-Assistant-Integration für ausgewählte Messreihen aus d
 - deutsche und englische Übersetzung
 - vorbereitet für HACS, Hassfest und HACS Action
 
+
+## Änderungen in 0.1.2
+
+- Veraltete Quelldaten setzen die Entität nicht mehr auf `unavailable`.
+- `data_stale` und `stale_after_minutes` kennzeichnen alte Messwerte separat.
+- `last_successful_fetch` zeigt den letzten erfolgreichen SOS-Abruf.
+- `result_time` wird getrennt vom eigentlichen Messzeitpunkt ausgewertet.
+- Zeitstempel werden konsequent nach UTC normalisiert.
+- Die Auswahl des neuesten Messwerts funktioniert auch bei gemischten Zeitzonenangaben.
+- Jeder erfolgreiche Poll wird mit `force_update` an den Recorder weitergegeben.
+- Debug-Protokollierung enthält Wert, Einheit, Messzeit und Ergebniszeit.
+
 ## Installation zum lokalen Test
 
 1. Den Ordner `custom_components/wupperverband_sensorweb` nach `/config/custom_components/` kopieren.
@@ -33,7 +45,7 @@ https://fluggs.wupperverband.de/sws5/service
 
 ## HACS-Vorbereitung
 
-Das Repository enthält `hacs.json`, eine semantische Versionsnummer im Manifest sowie GitHub-Actions für Hassfest und HACS-Validierung. Vor einer Veröffentlichung müssen in `manifest.json` die Platzhalter `OWNER` durch den tatsächlichen GitHub-Namen ersetzt, ein öffentliches Repository angelegt und Releases mit Tags wie `v0.1.1` erstellt werden.
+Das Repository enthält `hacs.json`, eine semantische Versionsnummer im Manifest sowie GitHub-Actions für Hassfest und HACS-Validierung. Vor einer Veröffentlichung müssen in `manifest.json` die Platzhalter `OWNER` durch den tatsächlichen GitHub-Namen ersetzt, ein öffentliches Repository angelegt und Releases mit Tags wie `v0.1.2` erstellt werden.
 
 ## Daten- und Nutzungsbedingungen
 

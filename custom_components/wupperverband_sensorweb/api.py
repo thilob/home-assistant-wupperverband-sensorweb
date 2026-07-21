@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Iterable
-from datetime import datetime
+from datetime import UTC, datetime
 from urllib.parse import unquote, urlparse
 from xml.etree import ElementTree as ET
 
@@ -141,13 +141,22 @@ def parse_capabilities(xml_data: bytes | str) -> list[Offering]:
 
 
 def _parse_datetime(value: str | None) -> datetime | None:
+    """Parse an ISO timestamp and normalize it to an aware UTC datetime."""
     if not value:
         return None
     normalized = value.strip().replace("Z", "+00:00")
     try:
-        return datetime.fromisoformat(normalized)
+        parsed = datetime.fromisoformat(normalized)
     except ValueError:
         return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _timestamp_sort_key(observation: Observation) -> datetime:
+    """Return a consistently timezone-aware key for newest-value selection."""
+    return observation.timestamp or observation.result_time or datetime.min.replace(tzinfo=UTC)
 
 
 def _coerce_value(value: str) -> float | str:
@@ -202,7 +211,24 @@ def parse_observation(xml_data: bytes | str) -> Observation:
                     uom_element.text.strip() if uom_element.text else None
                 )
 
-        time_text = _first_text(node, ("timePosition", "beginPosition", "resultTime"))
+        phenomenon_time = next(
+            (child for child in node.iter() if _local_name(child.tag) == "phenomenonTime"),
+            None,
+        )
+        result_time_element = next(
+            (child for child in node.iter() if _local_name(child.tag) == "resultTime"),
+            None,
+        )
+        time_text = (
+            _first_text(phenomenon_time, ("timePosition", "endPosition", "beginPosition"))
+            if phenomenon_time is not None
+            else None
+        )
+        result_time_text = (
+            _first_text(result_time_element, ("timePosition",))
+            if result_time_element is not None
+            else None
+        )
         procedure_element = next(
             (child for child in node.iter() if _local_name(child.tag) == "procedure"),
             None,
@@ -221,6 +247,7 @@ def parse_observation(xml_data: bytes | str) -> Observation:
                 value=_coerce_value(raw_value),
                 unit=unit,
                 timestamp=_parse_datetime(time_text),
+                result_time=_parse_datetime(result_time_text),
                 procedure=_attr_by_local_name(procedure_element, "href") if procedure_element is not None else None,
                 feature_of_interest=_attr_by_local_name(feature_element, "href") if feature_element is not None else None,
                 observed_property=_attr_by_local_name(property_element, "href") if property_element is not None else None,
@@ -230,7 +257,7 @@ def parse_observation(xml_data: bytes | str) -> Observation:
     if not candidates:
         raise WupperverbandInvalidResponseError("No observation result found")
 
-    return max(candidates, key=lambda item: item.timestamp or datetime.min)
+    return max(candidates, key=_timestamp_sort_key)
 
 
 class WupperverbandSosClient:
