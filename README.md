@@ -7,29 +7,17 @@ Benutzerdefinierte Home-Assistant-Integration für ausgewählte Messreihen aus d
 ## Funktionen
 
 - vollständige Einrichtung über die Home-Assistant-Oberfläche
-- alphabetisch sortierte Auswahl der veröffentlichten FluGGS-Stationen
-- anschließende Auswahl einer Messgröße und ihres Messverfahrens
-- eindeutiger Abruf der gewählten Messreihe über ihre Sensor-Web-ID
-- persistenter 48-Stunden-Cache für Stations- und Messreihen-Metadaten
-- ungecachter Live-Abruf der Messwerte bei jeder Aktualisierung
+- Abruf der verfügbaren SOS-Messangebote über `GetCapabilities`
+- Auswahl einer Station beziehungsweise eines Offerings und einer Messgröße
+- Abruf des jeweils neuesten Messwertes über `GetObservation`
 - Maßeinheit und Messzeitpunkt aus dem SOS-Dokument
 - konfigurierbares Aktualisierungsintervall, mindestens fünf Minuten
-- feste Validierung: Messwerte dürfen höchstens 24 Stunden alt sein
+- konfigurierbare Erkennung veralteter Messwerte
 - Quellenhinweis als Entitätsattribut
 - deutsche und englische Übersetzung
 - vorbereitet für HACS, Hassfest und HACS Action
 
-## Installation über HACS (benutzerdefiniertes Repository)
-
-Eine Aufnahme in den standardmäßigen HACS-Katalog ist nicht erforderlich:
-
-1. In HACS oben rechts das Drei-Punkte-Menü öffnen und **Benutzerdefinierte Repositories** wählen.
-2. `https://github.com/thilob/home-assistant-wupperverband-sensorweb` als Repository eintragen.
-3. Als Kategorie **Integration** auswählen und das Repository hinzufügen.
-4. **Wupperverband Sensor Web** in HACS herunterladen und Home Assistant neu starten.
-5. Unter **Einstellungen → Geräte & Dienste → Integration hinzufügen** nach **Wupperverband Sensor Web** suchen.
-
-Alternativ ist eine manuelle Installation möglich:
+## Installation zum lokalen Test
 
 1. Den Ordner `custom_components/wupperverband_sensorweb` nach `/config/custom_components/` kopieren.
 2. Home Assistant neu starten.
@@ -43,9 +31,9 @@ Standard-Endpunkt:
 https://fluggs.wupperverband.de/sws5/service
 ```
 
-## HACS-Kompatibilität
+## HACS-Vorbereitung
 
-Das Repository erfüllt die Strukturvorgaben für ein benutzerdefiniertes HACS-Integrationsrepository. Es enthält `hacs.json`, eine semantische Versionsnummer im Manifest, ein lokales Brand-Icon sowie GitHub Actions für Hassfest und HACS-Validierung. Eine Aufnahme in den öffentlichen HACS-Standardkatalog ist derzeit nicht vorgesehen.
+Das Repository enthält `hacs.json`, eine semantische Versionsnummer im Manifest sowie GitHub-Actions für Hassfest und HACS-Validierung. Vor einer Veröffentlichung müssen in `manifest.json` die Platzhalter `OWNER` durch den tatsächlichen GitHub-Namen ersetzt, ein öffentliches Repository angelegt und Releases mit Tags wie `v0.1.1` erstellt werden.
 
 ## Daten- und Nutzungsbedingungen
 
@@ -60,11 +48,7 @@ Maßgeblich sind die jeweils aktuellen Bedingungen des Wupperverbandes:
 
 ## Architektur
 
-Jeder Konfigurationseintrag repräsentiert genau eine Station und Messreihe. Während der Einrichtung lädt die Integration zunächst die Stationsliste und danach nur die Messreihen der ausgewählten Station. Im laufenden Betrieb fragt sie ausschließlich den jüngsten Wert der gespeicherten Messreihen-ID ab.
-
-Stations-/Bauwerkslisten und Messreihendefinitionen ändern sich selten und werden deshalb für 48 Stunden im Home-Assistant-Speicher persistiert. Der Cache übersteht Neustarts; bei einem vorübergehenden API-Ausfall kann der zuletzt gespeicherte Metadatenstand weiterhin für die Einrichtung verwendet werden. Messwerte werden ausdrücklich nicht in diesem Metadaten-Cache abgelegt.
-
-Ein Messwert wird nur übernommen, wenn er einen gültigen Zeitstempel besitzt und im Zeitfenster von jetzt bis höchstens 24 Stunden in der Vergangenheit liegt. Zukünftige Zeitstempel sind ungültig. Ungültige Werte führen bis zum nächsten erfolgreichen Live-Abruf zu einer nicht verfügbaren Entität.
+Jeder Konfigurationseintrag repräsentiert genau eine Kombination aus SOS-Offering und beobachteter Messgröße. Dies hält den Datenabruf klein und vermeidet einen lokalen Spiegel der gesamten Datenbank. Die Integration lädt die Angebotsliste nur während der Einrichtung und fragt danach ausschließlich den jüngsten Wert der ausgewählten Reihe ab.
 
 ## Entwicklung und Tests
 
@@ -82,3 +66,16 @@ Die enthaltenen Unit-Tests prüfen den XML-Parser mit SOS-2.0-Beispieldokumenten
 Programmcode: MIT. Siehe `LICENSE`.
 
 Daten: gesonderte Nutzungsbedingungen des Wupperverbandes; insbesondere **nicht** unter MIT, CC BY oder einer anderen Open-Data-Lizenz weiterlizenziert.
+
+
+## Verlauf und Diagnose
+
+Die Integration setzt `force_update`, damit Home Assistant jeden erfolgreichen
+Abruf an den Recorder weitergibt, auch wenn der vom SOS gelieferte Zahlenwert
+gegenüber dem vorherigen Abruf identisch ist. Der Sensor stellt zusätzlich die
+Attribute `measurement_time`, `measurement_age_minutes` und
+`poll_interval_minutes` bereit. Damit lässt sich unterscheiden zwischen einem
+tatsächlich konstanten Messwert und einer nicht fortgeschriebenen Quelle.
+
+HTTP-Antworten für Messwerte werden mit `Cache-Control: no-cache, no-store`
+angefordert, um veraltete Antworten eines vorgeschalteten Caches zu vermeiden.

@@ -1,19 +1,16 @@
 """Asynchronous OGC SOS 2.0 client for Wupperverband Sensor Web."""
-
 from __future__ import annotations
 
 import asyncio
 import logging
-import math
 from collections.abc import Iterable
-from datetime import UTC, datetime
+from datetime import datetime
 from urllib.parse import unquote, urlparse
 from xml.etree import ElementTree as ET
 
 from aiohttp import ClientError, ClientResponseError, ClientSession
 
-from .const import MAX_OBSERVATION_AGE
-from .models import Observation, Offering, Station, TimeSeries
+from .models import Observation, Offering
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -91,10 +88,7 @@ def parse_capabilities(xml_data: bytes | str) -> list[Offering]:
 
     offerings: list[Offering] = []
     for element in root.iter():
-        if _local_name(element.tag) not in {
-            "ObservationOffering",
-            "observationOffering",
-        }:
+        if _local_name(element.tag) not in {"ObservationOffering", "observationOffering"}:
             continue
 
         identifier = _first_text(element, ("identifier",))
@@ -103,9 +97,7 @@ def parse_capabilities(xml_data: bytes | str) -> list[Offering]:
         if not identifier:
             continue
 
-        name = _first_text(element, ("name", "title")) or humanize_identifier(
-            identifier
-        )
+        name = _first_text(element, ("name", "title")) or humanize_identifier(identifier)
         observed_properties = _references(element, "observableProperty")
         if not observed_properties:
             observed_properties = _references(element, "observedProperty")
@@ -128,7 +120,9 @@ def parse_capabilities(xml_data: bytes | str) -> list[Offering]:
                 continue
             identifier = _attr_by_local_name(member, "href")
             if identifier:
-                offerings.append(Offering(identifier, humanize_identifier(identifier)))
+                offerings.append(
+                    Offering(identifier, humanize_identifier(identifier))
+                )
 
     if not offerings:
         raise WupperverbandInvalidResponseError("No observation offerings found")
@@ -138,9 +132,7 @@ def parse_capabilities(xml_data: bytes | str) -> list[Offering]:
     deduplicated: dict[str, Offering] = {}
     for offering in offerings:
         current = deduplicated.get(offering.identifier)
-        if current is None or len(offering.observed_properties) > len(
-            current.observed_properties
-        ):
+        if current is None or len(offering.observed_properties) > len(current.observed_properties):
             deduplicated[offering.identifier] = offering
 
     return sorted(
@@ -180,8 +172,7 @@ def parse_observation(xml_data: bytes | str) -> Observation:
     measurement_nodes = [
         element
         for element in root.iter()
-        if _local_name(element.tag)
-        in {"OM_Measurement", "Measurement", "OM_Observation"}
+        if _local_name(element.tag) in {"OM_Measurement", "Measurement", "OM_Observation"}
     ]
     if not measurement_nodes:
         measurement_nodes = [root]
@@ -203,11 +194,7 @@ def parse_observation(xml_data: bytes | str) -> Observation:
         unit = _attr_by_local_name(result_element, "uom")
         if not unit:
             uom_element = next(
-                (
-                    child
-                    for child in result_element.iter()
-                    if _local_name(child.tag) == "uom"
-                ),
+                (child for child in result_element.iter() if _local_name(child.tag) == "uom"),
                 None,
             )
             if uom_element is not None:
@@ -221,19 +208,11 @@ def parse_observation(xml_data: bytes | str) -> Observation:
             None,
         )
         feature_element = next(
-            (
-                child
-                for child in node.iter()
-                if _local_name(child.tag) == "featureOfInterest"
-            ),
+            (child for child in node.iter() if _local_name(child.tag) == "featureOfInterest"),
             None,
         )
         property_element = next(
-            (
-                child
-                for child in node.iter()
-                if _local_name(child.tag) == "observedProperty"
-            ),
+            (child for child in node.iter() if _local_name(child.tag) == "observedProperty"),
             None,
         )
 
@@ -242,15 +221,9 @@ def parse_observation(xml_data: bytes | str) -> Observation:
                 value=_coerce_value(raw_value),
                 unit=unit,
                 timestamp=_parse_datetime(time_text),
-                procedure=_attr_by_local_name(procedure_element, "href")
-                if procedure_element is not None
-                else None,
-                feature_of_interest=_attr_by_local_name(feature_element, "href")
-                if feature_element is not None
-                else None,
-                observed_property=_attr_by_local_name(property_element, "href")
-                if property_element is not None
-                else None,
+                procedure=_attr_by_local_name(procedure_element, "href") if procedure_element is not None else None,
+                feature_of_interest=_attr_by_local_name(feature_element, "href") if feature_element is not None else None,
+                observed_property=_attr_by_local_name(property_element, "href") if property_element is not None else None,
             )
         )
 
@@ -267,159 +240,21 @@ class WupperverbandSosClient:
         self._session = session
         self.endpoint = endpoint.rstrip("?")
 
-    @property
-    def api_endpoint(self) -> str:
-        """Return the Sensor Web REST API matching the configured SOS URL."""
-        endpoint = self.endpoint.rstrip("/")
-        if endpoint.endswith("/service"):
-            endpoint = endpoint[: -len("/service")]
-        if not endpoint.endswith("/api"):
-            endpoint = f"{endpoint}/api"
-        return f"{endpoint}/"
-
     async def _get(self, params: dict[str, str]) -> bytes:
         try:
             async with asyncio.timeout(REQUEST_TIMEOUT_SECONDS):
-                response = await self._session.get(self.endpoint, params=params)
+                response = await self._session.get(
+                    self.endpoint,
+                    params=params,
+                    headers={
+                        "Cache-Control": "no-cache, no-store, max-age=0",
+                        "Pragma": "no-cache",
+                    },
+                )
                 response.raise_for_status()
                 return await response.read()
         except (TimeoutError, ClientError, ClientResponseError) as err:
             raise WupperverbandConnectionError(str(err)) from err
-
-    async def _get_json(
-        self, path: str, params: dict[str, str] | None = None
-    ) -> object:
-        try:
-            async with asyncio.timeout(REQUEST_TIMEOUT_SECONDS):
-                response = await self._session.get(
-                    f"{self.api_endpoint}{path}", params=params
-                )
-                response.raise_for_status()
-                return await response.json(content_type=None)
-        except (TimeoutError, ClientError, ClientResponseError) as err:
-            raise WupperverbandConnectionError(str(err)) from err
-        except (ValueError, TypeError) as err:
-            raise WupperverbandInvalidResponseError(
-                "Invalid Sensor Web API response"
-            ) from err
-
-    async def async_get_stations(self) -> list[Station]:
-        """Return monitoring stations exposed by the Sensor Web API."""
-        payload = await self._get_json("features", {"locale": "de"})
-        if not isinstance(payload, list):
-            raise WupperverbandInvalidResponseError("Invalid station list")
-
-        stations: list[Station] = []
-        for item in payload:
-            if not isinstance(item, dict) or "id" not in item:
-                continue
-            properties = item.get("properties") or {}
-            geometry = item.get("geometry") or {}
-            coordinates = geometry.get("coordinates") or []
-            stations.append(
-                Station(
-                    identifier=str(item["id"]),
-                    name=str(properties.get("label") or item["id"]),
-                    longitude=coordinates[0] if len(coordinates) >= 2 else None,
-                    latitude=coordinates[1] if len(coordinates) >= 2 else None,
-                )
-            )
-        if not stations:
-            raise WupperverbandInvalidResponseError("No stations found")
-        return sorted(stations, key=lambda item: item.name.casefold())
-
-    async def async_get_timeseries(self, station_id: str) -> list[TimeSeries]:
-        """Return measurement series available for one station."""
-        payload = await self._get_json(
-            "timeseries",
-            {"features": station_id, "expanded": "true", "locale": "de"},
-        )
-        if not isinstance(payload, list):
-            raise WupperverbandInvalidResponseError("Invalid time series list")
-
-        series: list[TimeSeries] = []
-        for item in payload:
-            if not isinstance(item, dict) or "id" not in item:
-                continue
-            feature = item.get("feature") or {}
-            properties = feature.get("properties") or {}
-            parameters = item.get("parameters") or {}
-            phenomenon = parameters.get("phenomenon") or {}
-            procedure = parameters.get("procedure") or {}
-            item_station_id = str(feature.get("id") or station_id)
-            if item_station_id != station_id:
-                continue
-            series.append(
-                TimeSeries(
-                    identifier=str(item["id"]),
-                    name=str(item.get("label") or item["id"]),
-                    station_id=item_station_id,
-                    station_name=str(properties.get("label") or station_id),
-                    phenomenon=str(
-                        phenomenon.get("label")
-                        or phenomenon.get("domainId")
-                        or item.get("label")
-                        or item["id"]
-                    ),
-                    procedure=(
-                        str(procedure.get("label") or procedure.get("domainId"))
-                        if procedure
-                        else None
-                    ),
-                    unit=item.get("uom"),
-                )
-            )
-        return sorted(
-            series,
-            key=lambda item: (
-                item.phenomenon.casefold(),
-                (item.procedure or "").casefold(),
-            ),
-        )
-
-    async def async_get_timeseries_observation(self, timeseries_id: str) -> Observation:
-        """Return the latest value for one exact measurement series."""
-        payload = await self._get_json(f"timeseries/{timeseries_id}", {"locale": "de"})
-        if not isinstance(payload, dict):
-            raise WupperverbandInvalidResponseError("Invalid time series response")
-        latest = payload.get("lastValue") or {}
-        value = latest.get("value")
-        if (
-            not isinstance(value, (int, float))
-            or isinstance(value, bool)
-            or not math.isfinite(value)
-        ):
-            raise WupperverbandInvalidResponseError("No latest value found")
-        timestamp = _parse_datetime(latest.get("timestamp"))
-        if timestamp is None:
-            raise WupperverbandInvalidResponseError("Missing or invalid timestamp")
-        if timestamp.tzinfo is None:
-            timestamp = timestamp.replace(tzinfo=UTC)
-        now = datetime.now(UTC)
-        if timestamp < now - MAX_OBSERVATION_AGE:
-            raise WupperverbandInvalidResponseError(
-                "Latest value is older than 24 hours"
-            )
-        if timestamp > now:
-            raise WupperverbandInvalidResponseError(
-                "Latest value has an invalid future timestamp"
-            )
-        feature = payload.get("feature") or {}
-        parameters = payload.get("parameters") or {}
-        phenomenon = parameters.get("phenomenon") or {}
-        procedure = parameters.get("procedure") or {}
-        return Observation(
-            value=float(value),
-            unit=payload.get("uom"),
-            timestamp=timestamp,
-            procedure=str(procedure.get("label") or procedure.get("domainId") or "")
-            or None,
-            feature_of_interest=str(feature.get("id") or "") or None,
-            observed_property=str(
-                phenomenon.get("label") or phenomenon.get("domainId") or ""
-            )
-            or None,
-        )
 
     async def async_get_offerings(self) -> list[Offering]:
         """Return available SOS observation offerings."""
