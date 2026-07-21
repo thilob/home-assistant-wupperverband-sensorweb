@@ -1,7 +1,7 @@
 import asyncio
-from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from unittest.mock import AsyncMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, call
 
 import pytest
 
@@ -50,104 +50,85 @@ def test_humanize_identifier() -> None:
     )
 
 
-def test_api_endpoint_is_derived_from_sos_endpoint() -> None:
-    client = WupperverbandSosClient(None, "https://example.test/sws5/service")
-    assert client.api_endpoint == "https://example.test/sws5/api/"
+def _client_with_responses(
+    *payloads: bytes,
+) -> tuple[WupperverbandSosClient, SimpleNamespace]:
+    response = SimpleNamespace(
+        raise_for_status=lambda: None,
+        read=AsyncMock(side_effect=payloads),
+    )
+    session = SimpleNamespace(get=AsyncMock(return_value=response))
+    return WupperverbandSosClient(
+        session, "https://example.test/sws5/service"
+    ), session
 
 
-def test_station_and_timeseries_selection() -> None:
-    client = WupperverbandSosClient(None, "https://example.test/sws5/service")
-    client._get_json = AsyncMock(
-        side_effect=[
-            [
-                {
-                    "id": "47",
-                    "properties": {"label": "Unterburg-Wupper"},
-                    "geometry": {"coordinates": [7.14, 51.13]},
-                }
-            ],
-            [
-                {
-                    "id": "24",
-                    "label": "Abfluss, Einzelwerte, Unterburg-Wupper",
-                    "uom": "m³/s",
-                    "feature": {
-                        "id": "47",
-                        "properties": {"label": "Unterburg-Wupper"},
-                    },
-                    "parameters": {
-                        "phenomenon": {"label": "Abfluss"},
-                        "procedure": {"label": "Einzelwerte"},
-                    },
-                },
-                {"id": "wrong-station", "feature": {"id": "99"}},
-            ],
-        ]
+def test_sos_requests_use_expected_parameters() -> None:
+    client, session = _client_with_responses(
+        (FIXTURES / "capabilities.xml").read_bytes(),
+        (FIXTURES / "observation.xml").read_bytes(),
     )
 
-    stations = asyncio.run(client.async_get_stations())
-    series = asyncio.run(client.async_get_timeseries("47"))
+    offerings = asyncio.run(client.async_get_offerings())
+    observation = asyncio.run(
+        client.async_get_latest_observation(
+            "offering-1", "urn:property:water-level"
+        )
+    )
 
-    assert stations[0].name == "Unterburg-Wupper"
-    assert stations[0].latitude == 51.13
-    assert len(series) == 1
-    assert series[0].identifier == "24"
-    assert series[0].phenomenon == "Abfluss"
+    assert offerings[0].identifier == "offering-1"
+    assert observation.value == 123.4
+    assert session.get.await_args_list[0].kwargs["params"] == {
+        "service": "SOS",
+        "version": "2.0.0",
+        "request": "GetCapabilities",
+    }
+    assert session.get.await_args_list[1].kwargs["params"] == {
+        "service": "SOS",
+        "version": "2.0.0",
+        "request": "GetObservation",
+        "offering": "offering-1",
+        "observedProperty": "urn:property:water-level",
+        "temporalFilter": "om:phenomenonTime,latest",
+        "responseFormat": "http://www.opengis.net/om/2.0",
+    }
 
 
 def test_measurement_requests_are_not_cached() -> None:
-    client = WupperverbandSosClient(None, "https://example.test/sws5/service")
-    response = {
-        "id": "24",
-        "uom": "m³/s",
-        "lastValue": {
-            "timestamp": (
-                datetime.now(UTC) - timedelta(hours=23, minutes=59)
-            ).isoformat(),
-            "value": 6.57,
-        },
-        "feature": {"id": "47"},
-        "parameters": {"phenomenon": {"label": "Abfluss"}},
+    payload = (FIXTURES / "observation.xml").read_bytes()
+    client, session = _client_with_responses(payload, payload)
+
+    asyncio.run(client.async_get_latest_observation("offering-1", "property-1"))
+    asyncio.run(client.async_get_latest_observation("offering-1", "property-1"))
+
+    expected_headers = {
+        "Cache-Control": "no-cache, no-store, max-age=0",
+        "Pragma": "no-cache",
     }
-    client._get_json = AsyncMock(side_effect=[response, response])
-
-    asyncio.run(client.async_get_timeseries_observation("24"))
-    asyncio.run(client.async_get_timeseries_observation("24"))
-
-    assert client._get_json.await_count == 2
-
-
-@pytest.mark.parametrize(
-    ("last_value", "message"),
-    [
-        (
-            {
-                "timestamp": (datetime.now(UTC) - timedelta(hours=25)).isoformat(),
-                "value": 6.57,
-            },
-            "older than 24 hours",
+    assert session.get.await_count == 2
+    assert session.get.await_args_list == [
+        call(
+            "https://example.test/sws5/service",
+            params=session.get.await_args_list[0].kwargs["params"],
+            headers=expected_headers,
         ),
-        (
-            {
-                "timestamp": (datetime.now(UTC) + timedelta(seconds=1)).isoformat(),
-                "value": 6.57,
-            },
-            "future timestamp",
+        call(
+            "https://example.test/sws5/service",
+            params=session.get.await_args_list[1].kwargs["params"],
+            headers=expected_headers,
         ),
-        ({"timestamp": datetime.now(UTC).isoformat(), "value": None}, "No latest"),
-    ],
-)
-def test_invalid_measurements_are_rejected(last_value, message) -> None:
-    client = WupperverbandSosClient(None, "https://example.test/sws5/service")
-    client._get_json = AsyncMock(
-        return_value={
-            "id": "24",
-            "uom": "m³/s",
-            "lastValue": last_value,
-            "feature": {"id": "47"},
-            "parameters": {"phenomenon": {"label": "Abfluss"}},
-        }
-    )
+    ]
 
-    with pytest.raises(WupperverbandInvalidResponseError, match=message):
-        asyncio.run(client.async_get_timeseries_observation("24"))
+
+def test_observation_without_result_is_rejected() -> None:
+    with pytest.raises(WupperverbandInvalidResponseError, match="No observation"):
+        parse_observation(
+            b'<om:OM_Observation xmlns:om="http://www.opengis.net/om/2.0" />'
+        )
+
+
+def test_invalid_observation_xml_is_rejected() -> None:
+    with pytest.raises(
+        WupperverbandInvalidResponseError, match="Invalid observation XML"
+    ):
+        parse_observation(b"<not-closed>")
