@@ -20,7 +20,9 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .const import (
     ATTRIBUTION,
@@ -181,7 +183,7 @@ class WupperverbandSensor(CoordinatorEntity[WupperverbandCoordinator], SensorEnt
 
 
 class WupperverbandLastSuccessfulFetchSensor(
-    CoordinatorEntity[WupperverbandCoordinator], SensorEntity
+    CoordinatorEntity[WupperverbandCoordinator], SensorEntity, RestoreEntity
 ):
     """Diagnostic timestamp of the last successful upstream fetch."""
 
@@ -204,6 +206,24 @@ class WupperverbandLastSuccessfulFetchSensor(
             model="Sensor Observation Service (SOS 2.0)",
             configuration_url=SOURCE_URL,
         )
+
+    async def async_added_to_hass(self) -> None:
+        """Restore the last successful fetch timestamp across restarts."""
+        await super().async_added_to_hass()
+
+        if self.coordinator.last_successful_fetch is not None:
+            return
+
+        last_state = await self.async_get_last_state()
+        if last_state is None:
+            return
+
+        restored = dt_util.parse_datetime(last_state.state)
+        if restored is None:
+            return
+
+        self.coordinator.last_successful_fetch = _as_utc(restored)
+        self.async_write_ha_state()
 
     @property
     def native_value(self) -> datetime | None:
