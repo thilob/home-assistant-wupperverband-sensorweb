@@ -6,6 +6,27 @@ from datetime import datetime
 
 
 @dataclass(frozen=True, slots=True)
+class Station:
+    """Station metadata used during config-flow selection."""
+
+    identifier: str
+    name: str
+    longitude: float | None = None
+    latitude: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TimeSeries:
+    """A station-specific measurable time series."""
+
+    identifier: str
+    name: str
+    station_identifier: str
+    station_name: str
+    observed_property: str
+
+
+@dataclass(frozen=True, slots=True)
 class Offering:
     """An SOS observation offering."""
 
