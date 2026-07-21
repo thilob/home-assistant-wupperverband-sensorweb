@@ -1,28 +1,30 @@
 # Wupperverband Sensor Web für Home Assistant
 
-Benutzerdefinierte Home-Assistant-Integration für ausgewählte Messreihen aus dem öffentlichen **OGC Sensor Observation Service (SOS) 2.0** des Wupperverbandes.
+Benutzerdefinierte Home-Assistant-Integration für ausgewählte Messreihen aus dem öffentlichen Sensor Web des Wupperverbandes. Die Einrichtung orientiert sich am Sensor-Web-Workflow `Ort -> Messgröße`; der eigentliche Datenabruf erfolgt je nach Eintrag über die passende Zeitreihe im Hintergrund.
 
 > **Wichtiger Rechtehinweis:** Die MIT-Lizenz dieses Repositorys gilt ausschließlich für den Programmcode. Die abgerufenen Messdaten sind nicht Bestandteil der MIT-Lizenz. Für Dienste und Daten gelten die Bedingungen des Wupperverbandes. Nach den veröffentlichten Bedingungen ist eine kommerzielle Nutzung nicht gestattet und es ist ein Quellenvermerk `© Wupperverband (Jahr)` anzubringen.
 
 ## Funktionen
 
 - vollständige Einrichtung über die Home-Assistant-Oberfläche
-- Abruf der verfügbaren SOS-Messangebote über `GetCapabilities`
-- Auswahl einer Station beziehungsweise eines Offerings und einer Messgröße
-- Abruf des jeweils neuesten Messwertes über `GetObservation`
-- Maßeinheit und Messzeitpunkt aus dem SOS-Dokument
+- Auswahl über `Ort -> Messgröße`, analog zum Wupperverband-Sensorweb
+- Zwischenschritt-freie Zuordnung auf die passende interne Zeitreihe
+- Abruf des jeweils neuesten Messwertes
+- Maßeinheit, Messzeitpunkt und Ergebniszeit
 - konfigurierbares Aktualisierungsintervall, mindestens fünf Minuten
-- konfigurierbare Erkennung veralteter Messwerte
+- Standard-Aktualisierungsintervall für neue Einträge: 30 Minuten
+- Standard-Schwelle für veraltete Daten bei neuen Einträgen: 24 Stunden
 - Quellenhinweis als Entitätsattribut
+- Diagnose-Entität für den letzten erfolgreichen Abruf
 - deutsche und englische Übersetzung
 - vorbereitet für HACS, Hassfest und HACS Action
 
-
-## Änderungen in 0.1.2
+## Aktueller Stand
 
 - Veraltete Quelldaten setzen die Entität nicht mehr auf `unavailable`.
 - `data_stale` und `stale_after_minutes` kennzeichnen alte Messwerte separat.
-- `last_successful_fetch` zeigt den letzten erfolgreichen SOS-Abruf.
+- `last_successful_fetch` zeigt den letzten erfolgreichen Abruf.
+- Die Diagnose-Entität für `last successful fetch` wird über Neustarts hinweg wiederhergestellt.
 - `result_time` wird getrennt vom eigentlichen Messzeitpunkt ausgewertet.
 - Zeitstempel werden konsequent nach UTC normalisiert.
 - Die Auswahl des neuesten Messwerts funktioniert auch bei gemischten Zeitzonenangaben.
@@ -35,7 +37,8 @@ Benutzerdefinierte Home-Assistant-Integration für ausgewählte Messreihen aus d
 2. Home Assistant neu starten.
 3. **Einstellungen → Geräte & Dienste → Integration hinzufügen** öffnen.
 4. Nach **Wupperverband Sensor Web** suchen.
-5. SOS-Endpunkt bestätigen, Messangebot und Messgröße auswählen.
+5. Sensor-Web-Endpunkt bestätigen, Ort und Messgröße auswählen.
+6. Optional Intervall und Veraltet-Schwelle in den Optionen anpassen.
 
 Standard-Endpunkt:
 
@@ -43,9 +46,9 @@ Standard-Endpunkt:
 https://fluggs.wupperverband.de/sws5/service
 ```
 
-## HACS-Vorbereitung
+## HACS
 
-Das Repository enthält `hacs.json`, eine semantische Versionsnummer im Manifest sowie GitHub-Actions für Hassfest und HACS-Validierung. Vor einer Veröffentlichung müssen in `manifest.json` die Platzhalter `OWNER` durch den tatsächlichen GitHub-Namen ersetzt, ein öffentliches Repository angelegt und Releases mit Tags wie `v0.1.2` erstellt werden.
+Das Repository enthält `hacs.json`, eine semantische Versionsnummer im Manifest sowie GitHub-Actions für Hassfest und HACS-Validierung. Für HACS-Releases sollten Git-Tags passend zur Manifest-Version erstellt werden, z. B. `v0.2.2`.
 
 ## Daten- und Nutzungsbedingungen
 
@@ -60,7 +63,7 @@ Maßgeblich sind die jeweils aktuellen Bedingungen des Wupperverbandes:
 
 ## Architektur
 
-Jeder Konfigurationseintrag repräsentiert genau eine Kombination aus SOS-Offering und beobachteter Messgröße. Dies hält den Datenabruf klein und vermeidet einen lokalen Spiegel der gesamten Datenbank. Die Integration lädt die Angebotsliste nur während der Einrichtung und fragt danach ausschließlich den jüngsten Wert der ausgewählten Reihe ab.
+Jeder Konfigurationseintrag repräsentiert genau eine Kombination aus Ort und Messgröße. Während der Einrichtung lädt die Integration die Orte und zugehörigen Zeitreihen aus dem Sensor Web, verdichtet diese für die Auswahl auf sichtbare Messgrößen und speichert intern die passende Zeitreihen-ID. Bestehende ältere SOS-basierte Einträge bleiben weiter lesbar.
 
 ## Entwicklung und Tests
 
@@ -71,7 +74,7 @@ ruff check .
 python -m compileall custom_components
 ```
 
-Die enthaltenen Unit-Tests prüfen den XML-Parser mit SOS-2.0-Beispieldokumenten und benötigen keinen Zugriff auf den Produktivdienst.
+Die enthaltenen Unit-Tests prüfen sowohl den SOS-Parser als auch die Caching-/Zuordnungslogik und benötigen keinen Zugriff auf den Produktivdienst.
 
 ## Lizenz
 
@@ -83,11 +86,14 @@ Daten: gesonderte Nutzungsbedingungen des Wupperverbandes; insbesondere **nicht*
 ## Verlauf und Diagnose
 
 Die Integration setzt `force_update`, damit Home Assistant jeden erfolgreichen
-Abruf an den Recorder weitergibt, auch wenn der vom SOS gelieferte Zahlenwert
-gegenüber dem vorherigen Abruf identisch ist. Der Sensor stellt zusätzlich die
-Attribute `measurement_time`, `measurement_age_minutes` und
-`poll_interval_minutes` bereit. Damit lässt sich unterscheiden zwischen einem
-tatsächlich konstanten Messwert und einer nicht fortgeschriebenen Quelle.
+Abruf an den Recorder weitergibt, auch wenn der gelieferte Zahlenwert gegenüber
+dem vorherigen Abruf identisch ist. Der Sensor stellt zusätzlich die Attribute
+`measurement_time`, `measurement_age_minutes`, `poll_interval_minutes` und
+`last_successful_fetch` bereit. Zusätzlich gibt es eine eigene Diagnose-Entität
+für den letzten erfolgreichen Abruf. Damit lässt sich unterscheiden zwischen
+einem tatsächlich konstanten Messwert, einer nicht fortgeschriebenen Quelle und
+einem Abrufproblem.
 
-HTTP-Antworten für Messwerte werden mit `Cache-Control: no-cache, no-store`
-angefordert, um veraltete Antworten eines vorgeschalteten Caches zu vermeiden.
+HTTP-Antworten für Messwerte und Sensor-Web-Metadaten werden mit
+`Cache-Control: no-cache, no-store` angefordert, um veraltete Antworten eines
+vorgeschalteten Caches zu vermeiden.
