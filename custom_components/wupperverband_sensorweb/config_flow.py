@@ -13,14 +13,13 @@ from .api import (
     WupperverbandApiError,
     WupperverbandConnectionError,
     WupperverbandSosClient,
-    humanize_identifier,
 )
 from .const import (
     CONF_DISPLAY_NAME,
     CONF_ENDPOINT,
-    CONF_OBSERVED_PROPERTY,
-    CONF_OFFERING,
     CONF_STALE_AFTER,
+    CONF_STATION,
+    CONF_TIMESERIES,
     CONF_UPDATE_INTERVAL,
     DEFAULT_ENDPOINT,
     DEFAULT_STALE_AFTER_MINUTES,
@@ -29,7 +28,8 @@ from .const import (
     MAX_UPDATE_INTERVAL_MINUTES,
     MIN_UPDATE_INTERVAL_MINUTES,
 )
-from .models import Offering
+from .metadata_cache import async_get_metadata_cache
+from .models import Station, TimeSeries
 
 
 class WupperverbandConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -39,8 +39,11 @@ class WupperverbandConfigFlow(ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         self._endpoint = DEFAULT_ENDPOINT
-        self._offerings: list[Offering] = []
-        self._selected_offering: Offering | None = None
+        self._client: WupperverbandSosClient | None = None
+        self._stations: list[Station] = []
+        self._selected_station: Station | None = None
+        self._timeseries: list[TimeSeries] = []
+        self._measurement_choices: dict[str, TimeSeries] = {}
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -49,11 +52,12 @@ class WupperverbandConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             self._endpoint = user_input[CONF_ENDPOINT].strip()
-            client = WupperverbandSosClient(
+            self._client = WupperverbandSosClient(
                 async_get_clientsession(self.hass), self._endpoint
             )
             try:
-                self._offerings = await client.async_get_offerings()
+                cache = async_get_metadata_cache(self.hass)
+                self._stations = await cache.async_get_stations(self._client)
             except WupperverbandConnectionError:
                 errors["base"] = "cannot_connect"
             except WupperverbandApiError:
@@ -61,7 +65,7 @@ class WupperverbandConfigFlow(ConfigFlow, domain=DOMAIN):
             except Exception:  # noqa: BLE001 - config flow must recover cleanly
                 errors["base"] = "unknown"
             else:
-                return await self.async_step_offering()
+                return await self.async_step_station()
 
         schema = vol.Schema(
             {
@@ -72,26 +76,40 @@ class WupperverbandConfigFlow(ConfigFlow, domain=DOMAIN):
         )
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
 
-    async def async_step_offering(
+    async def async_step_station(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Select an observation offering."""
+        """Select a monitoring location."""
+        errors: dict[str, str] = {}
         if user_input is not None:
-            identifier = user_input[CONF_OFFERING]
-            self._selected_offering = next(
-                item for item in self._offerings if item.identifier == identifier
+            identifier = user_input[CONF_STATION]
+            self._selected_station = next(
+                item for item in self._stations if item.identifier == identifier
             )
-            return await self.async_step_property()
+            assert self._client is not None
+            try:
+                cache = async_get_metadata_cache(self.hass)
+                self._timeseries = await cache.async_get_timeseries(
+                    self._client, identifier
+                )
+            except WupperverbandConnectionError:
+                errors["base"] = "cannot_connect"
+            except WupperverbandApiError:
+                errors["base"] = "invalid_response"
+            except Exception:  # noqa: BLE001 - config flow must recover cleanly
+                errors["base"] = "unknown"
+            else:
+                return await self.async_step_property()
 
         options = [
             selector.SelectOptionDict(value=item.identifier, label=item.name)
-            for item in self._offerings
+            for item in self._stations
         ]
         return self.async_show_form(
-            step_id="offering",
+            step_id="station",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_OFFERING): selector.SelectSelector(
+                    vol.Required(CONF_STATION): selector.SelectSelector(
                         selector.SelectSelectorConfig(
                             options=options,
                             mode=selector.SelectSelectorMode.DROPDOWN,
@@ -99,30 +117,31 @@ class WupperverbandConfigFlow(ConfigFlow, domain=DOMAIN):
                     )
                 }
             ),
+            errors=errors,
         )
 
     async def async_step_property(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Select observed property and finish."""
-        assert self._selected_offering is not None
-        properties = self._selected_offering.observed_properties
+        """Select the measurement type and finish."""
+        assert self._selected_station is not None
+        self._measurement_choices = _group_measurements(self._timeseries)
 
         if user_input is not None:
-            observed_property = user_input[CONF_OBSERVED_PROPERTY]
+            timeseries = self._measurement_choices[user_input[CONF_TIMESERIES]]
             display_name = user_input.get(CONF_DISPLAY_NAME, "").strip()
-            unique = f"{self._endpoint}|{self._selected_offering.identifier}|{observed_property}"
+            unique = f"{self._endpoint}|{timeseries.identifier}"
             await self.async_set_unique_id(unique)
             self._abort_if_unique_id_configured()
             title = display_name or (
-                f"{self._selected_offering.name} – {humanize_identifier(observed_property)}"
+                f"{self._selected_station.name} – {timeseries.phenomenon}"
             )
             return self.async_create_entry(
                 title=title,
                 data={
                     CONF_ENDPOINT: self._endpoint,
-                    CONF_OFFERING: self._selected_offering.identifier,
-                    CONF_OBSERVED_PROPERTY: observed_property,
+                    CONF_STATION: self._selected_station.identifier,
+                    CONF_TIMESERIES: timeseries.identifier,
                     CONF_DISPLAY_NAME: title,
                 },
                 options={
@@ -131,18 +150,18 @@ class WupperverbandConfigFlow(ConfigFlow, domain=DOMAIN):
                 },
             )
 
-        if not properties:
+        if not self._measurement_choices:
             return self.async_abort(reason="no_observed_properties")
 
         options = [
-            selector.SelectOptionDict(value=value, label=humanize_identifier(value))
-            for value in properties
+            selector.SelectOptionDict(value=key, label=key)
+            for key in self._measurement_choices
         ]
         return self.async_show_form(
             step_id="property",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_OBSERVED_PROPERTY): selector.SelectSelector(
+                    vol.Required(CONF_TIMESERIES): selector.SelectSelector(
                         selector.SelectSelectorConfig(
                             options=options,
                             mode=selector.SelectSelectorMode.DROPDOWN,
@@ -194,3 +213,25 @@ class WupperverbandOptionsFlow(OptionsFlow):
                 }
             ),
         )
+
+
+def _group_measurements(timeseries: list[TimeSeries]) -> dict[str, TimeSeries]:
+    """Collapse raw time series into the measurement choices shown by Sensor Web."""
+    grouped: dict[str, TimeSeries] = {}
+    for item in timeseries:
+        label = item.phenomenon.strip()
+        if not label:
+            continue
+        current = grouped.get(label)
+        if current is None or _timeseries_sort_key(item) < _timeseries_sort_key(current):
+            grouped[label] = item
+    return dict(sorted(grouped.items(), key=lambda entry: entry[0].casefold()))
+
+
+def _timeseries_sort_key(item: TimeSeries) -> tuple[int, str, str]:
+    """Prefer the least-specific series when multiple rows share one label."""
+    return (
+        0 if not item.procedure else 1,
+        (item.procedure or "").casefold(),
+        item.identifier,
+    )

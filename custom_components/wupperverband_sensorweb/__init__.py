@@ -13,6 +13,7 @@ from .const import (
     CONF_ENDPOINT,
     CONF_OBSERVED_PROPERTY,
     CONF_OFFERING,
+    CONF_TIMESERIES,
     CONF_UPDATE_INTERVAL,
     DEFAULT_UPDATE_INTERVAL_MINUTES,
 )
@@ -31,9 +32,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: WupperverbandConfigEntry
     coordinator = WupperverbandCoordinator(
         hass,
         client,
-        entry.data[CONF_OFFERING],
-        entry.data[CONF_OBSERVED_PROPERTY],
         timedelta(minutes=minutes),
+        timeseries_id=entry.data.get(CONF_TIMESERIES),
+        offering=entry.data.get(CONF_OFFERING),
+        observed_property=entry.data.get(CONF_OBSERVED_PROPERTY),
     )
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator

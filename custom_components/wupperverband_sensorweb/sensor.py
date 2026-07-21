@@ -30,6 +30,8 @@ from .const import (
     CONF_OBSERVED_PROPERTY,
     CONF_OFFERING,
     CONF_STALE_AFTER,
+    CONF_STATION,
+    CONF_TIMESERIES,
     DEFAULT_STALE_AFTER_MINUTES,
     DOMAIN,
     MANUFACTURER,
@@ -96,11 +98,12 @@ class WupperverbandSensor(CoordinatorEntity[WupperverbandCoordinator], SensorEnt
     def __init__(self, entry: ConfigEntry[WupperverbandCoordinator]) -> None:
         super().__init__(entry.runtime_data)
         self._entry = entry
-        offering = entry.data[CONF_OFFERING]
-        observed_property = entry.data[CONF_OBSERVED_PROPERTY]
-        self._attr_unique_id = f"{offering}|{observed_property}"
+        station = entry.data.get(CONF_STATION) or entry.data.get(CONF_OFFERING)
+        timeseries = entry.data.get(CONF_TIMESERIES)
+        observed_property = entry.data.get(CONF_OBSERVED_PROPERTY)
+        self._attr_unique_id = timeseries or f"{station}|{observed_property}"
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, offering)},
+            identifiers={(DOMAIN, station)},
             name=entry.data.get(CONF_DISPLAY_NAME, entry.title),
             manufacturer=MANUFACTURER,
             model="Sensor Observation Service (SOS 2.0)",
@@ -135,8 +138,10 @@ class WupperverbandSensor(CoordinatorEntity[WupperverbandCoordinator], SensorEnt
         if data is None:
             return {
                 "attribution": ATTRIBUTION.format(year=datetime.now().year),
-                "offering": self._entry.data[CONF_OFFERING],
-                "observed_property": self._entry.data[CONF_OBSERVED_PROPERTY],
+                "station": self._entry.data.get(CONF_STATION),
+                "timeseries": self._entry.data.get(CONF_TIMESERIES),
+                "offering": self._entry.data.get(CONF_OFFERING),
+                "observed_property": self._entry.data.get(CONF_OBSERVED_PROPERTY),
             }
 
         now = datetime.now(UTC)
@@ -152,8 +157,10 @@ class WupperverbandSensor(CoordinatorEntity[WupperverbandCoordinator], SensorEnt
 
         attrs: dict[str, Any] = {
             "attribution": ATTRIBUTION.format(year=now.year),
-            "offering": self._entry.data[CONF_OFFERING],
-            "observed_property": self._entry.data[CONF_OBSERVED_PROPERTY],
+            "station": self._entry.data.get(CONF_STATION),
+            "timeseries": self._entry.data.get(CONF_TIMESERIES),
+            "offering": self._entry.data.get(CONF_OFFERING),
+            "observed_property": self._entry.data.get(CONF_OBSERVED_PROPERTY),
             "poll_interval_minutes": (
                 int(self.coordinator.update_interval.total_seconds() / 60)
                 if self.coordinator.update_interval
@@ -194,13 +201,16 @@ class WupperverbandLastSuccessfulFetchSensor(
 
     def __init__(self, entry: ConfigEntry[WupperverbandCoordinator]) -> None:
         super().__init__(entry.runtime_data)
-        offering = entry.data[CONF_OFFERING]
-        observed_property = entry.data[CONF_OBSERVED_PROPERTY]
+        station = entry.data.get(CONF_STATION) or entry.data.get(CONF_OFFERING)
+        timeseries = entry.data.get(CONF_TIMESERIES)
+        observed_property = entry.data.get(CONF_OBSERVED_PROPERTY)
         self._attr_unique_id = (
-            f"{offering}|{observed_property}|last_successful_fetch"
+            f"{timeseries}|last_successful_fetch"
+            if timeseries is not None
+            else f"{station}|{observed_property}|last_successful_fetch"
         )
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, offering)},
+            identifiers={(DOMAIN, station)},
             name=entry.data.get(CONF_DISPLAY_NAME, entry.title),
             manufacturer=MANUFACTURER,
             model="Sensor Observation Service (SOS 2.0)",

@@ -17,13 +17,15 @@ class Station:
 
 @dataclass(frozen=True, slots=True)
 class TimeSeries:
-    """A station-specific measurable time series."""
+    """A measurement series belonging to one station."""
 
     identifier: str
     name: str
-    station_identifier: str
+    station_id: str
     station_name: str
-    observed_property: str
+    phenomenon: str
+    procedure: str | None = None
+    unit: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

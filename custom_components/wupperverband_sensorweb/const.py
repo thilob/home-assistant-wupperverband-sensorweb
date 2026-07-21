@@ -17,6 +17,8 @@ METADATA_CACHE_TTL = timedelta(hours=48)
 CONF_ENDPOINT = "endpoint"
 CONF_OFFERING = "offering"
 CONF_OBSERVED_PROPERTY = "observed_property"
+CONF_STATION = "station"
+CONF_TIMESERIES = "timeseries"
 CONF_DISPLAY_NAME = "display_name"
 CONF_UPDATE_INTERVAL = "update_interval"
 CONF_STALE_AFTER = "stale_after"

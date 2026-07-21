@@ -21,9 +21,10 @@ class WupperverbandCoordinator(DataUpdateCoordinator[Observation]):
         self,
         hass: HomeAssistant,
         client: WupperverbandSosClient,
-        offering: str,
-        observed_property: str,
         update_interval: timedelta,
+        timeseries_id: str | None = None,
+        offering: str | None = None,
+        observed_property: str | None = None,
     ) -> None:
         super().__init__(
             hass,
@@ -32,15 +33,22 @@ class WupperverbandCoordinator(DataUpdateCoordinator[Observation]):
             update_interval=update_interval,
         )
         self.client = client
+        self.timeseries_id = timeseries_id
         self.offering = offering
         self.observed_property = observed_property
         self.last_successful_fetch: datetime | None = None
 
     async def _async_update_data(self) -> Observation:
         try:
-            observation = await self.client.async_get_latest_observation(
-                self.offering, self.observed_property
-            )
+            if self.timeseries_id is not None:
+                observation = await self.client.async_get_timeseries_observation(
+                    self.timeseries_id
+                )
+            else:
+                observation = await self.client.async_get_latest_observation(
+                    self.offering or "",
+                    self.observed_property or "",
+                )
         except WupperverbandApiError as err:
             raise UpdateFailed(
                 f"Error communicating with Wupperverband SOS: {err}"
@@ -48,10 +56,9 @@ class WupperverbandCoordinator(DataUpdateCoordinator[Observation]):
 
         self.last_successful_fetch = datetime.now(UTC)
         _LOGGER.debug(
-            "Fetched Wupperverband observation for %s / %s: value=%s unit=%s "
+            "Fetched Wupperverband observation for %s: value=%s unit=%s "
             "measurement_time=%s result_time=%s",
-            self.offering,
-            self.observed_property,
+            self.timeseries_id or f"{self.offering} / {self.observed_property}",
             observation.value,
             observation.unit,
             observation.timestamp,

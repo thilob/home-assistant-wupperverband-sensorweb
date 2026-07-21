@@ -7,14 +7,14 @@
         "description": "Die Nutzung der Daten ist nur im Rahmen der Nutzungsbedingungen des Wupperverbandes zulässig. Insbesondere ist eine kommerzielle Nutzung ausgeschlossen.",
         "data": {"endpoint": "SOS-Endpunkt"}
       },
-      "offering": {
-        "title": "Messangebot auswählen",
-        "data": {"offering": "Station / Messangebot"}
+      "station": {
+        "title": "Ort auswählen",
+        "data": {"station": "Ort"}
       },
       "property": {
         "title": "Messgröße auswählen",
         "data": {
-          "observed_property": "Messgröße",
+          "timeseries": "Messgröße",
           "display_name": "Anzeigename (optional)"
         }
       }
@@ -26,7 +26,7 @@
     },
     "abort": {
       "already_configured": "Diese Messreihe ist bereits konfiguriert.",
-      "no_observed_properties": "Für dieses Messangebot wurden keine Messgrößen veröffentlicht."
+      "no_observed_properties": "Für diesen Ort wurden keine Messgrößen veröffentlicht."
     }
   },
   "options": {
