@@ -4,10 +4,15 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     PERCENTAGE,
+    EntityCategory,
     UnitOfLength,
     UnitOfTemperature,
     UnitOfVolumeFlowRate,
@@ -68,7 +73,12 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up the configured measurement sensor."""
-    async_add_entities([WupperverbandSensor(entry)])
+    async_add_entities(
+        [
+            WupperverbandSensor(entry),
+            WupperverbandLastSuccessfulFetchSensor(entry),
+        ]
+    )
 
 
 class WupperverbandSensor(CoordinatorEntity[WupperverbandCoordinator], SensorEntity):
@@ -168,3 +178,39 @@ class WupperverbandSensor(CoordinatorEntity[WupperverbandCoordinator], SensorEnt
         if data.feature_of_interest:
             attrs["feature_of_interest"] = data.feature_of_interest
         return attrs
+
+
+class WupperverbandLastSuccessfulFetchSensor(
+    CoordinatorEntity[WupperverbandCoordinator], SensorEntity
+):
+    """Diagnostic timestamp of the last successful upstream fetch."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Last successful fetch"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, entry: ConfigEntry[WupperverbandCoordinator]) -> None:
+        super().__init__(entry.runtime_data)
+        offering = entry.data[CONF_OFFERING]
+        observed_property = entry.data[CONF_OBSERVED_PROPERTY]
+        self._attr_unique_id = (
+            f"{offering}|{observed_property}|last_successful_fetch"
+        )
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, offering)},
+            name=entry.data.get(CONF_DISPLAY_NAME, entry.title),
+            manufacturer=MANUFACTURER,
+            model="Sensor Observation Service (SOS 2.0)",
+            configuration_url=SOURCE_URL,
+        )
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return when the latest successful poll completed."""
+        return self.coordinator.last_successful_fetch
+
+    @property
+    def available(self) -> bool:
+        """Expose availability once at least one fetch succeeded."""
+        return self.coordinator.last_successful_fetch is not None
